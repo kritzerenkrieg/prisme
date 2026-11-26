@@ -168,7 +168,7 @@ mod tests {
         if Command::new("git").arg("--version").output().is_err() {
             return;
         }
-        let dir = std::env::temp_dir().join(format!("maido-git-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("prisme-git-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         assert!(!status(&dir).unwrap().repo);

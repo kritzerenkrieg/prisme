@@ -88,7 +88,7 @@ export interface Settings {
   recentFolders: string[]
 }
 
-/** A newer release: `install` when maido can update itself (AppImage, Windows, macOS), else `url` is the package. */
+/** A newer release: `install` when prisme can update itself (AppImage, Windows, macOS), else `url` is the package. */
 /** A touchpad pinch, from Rust (WebKitGTK never sees it); `scale` is since it began. */
 export interface Pinch {
   phase: 'begin' | 'update' | 'end'
@@ -190,7 +190,7 @@ export const api = {
   renderMermaid: (source: string, theme: string) => invoke<string>('render_mermaid', { source, theme }),
   /** Rejects when this build has no update server. */
   checkUpdate: () => invoke<UpdateInfo | null>('check_update'),
-  /** Installs the update found by `checkUpdate` and restarts maido. */
+  /** Installs the update found by `checkUpdate` and restarts prisme. */
   installUpdate: () => invoke<void>('install_update'),
   /** Whether this window has unsaved edits (an update restarts every window). */
   setUnsaved: (unsaved: boolean) => invoke<void>('set_unsaved', { unsaved }),
@@ -239,7 +239,7 @@ export function isDoc(path: string): boolean {
   return DOC_EXTENSIONS.includes(path.split('.').pop()?.toLowerCase() ?? '')
 }
 
-/** Source files maido highlights (as `highlight::language` in Rust). */
+/** Source files prisme highlights (as `highlight::language` in Rust). */
 const CODE_EXTENSIONS = new Set(
   'rs py pyw pyi c h cpp cc cxx c++ hpp hh hxx h++ ino cs java go php json jsonc json5 js mjs cjs jsx ts mts cts tsx sh bash zsh rb lua pl pm r scala hs ml mli erl clj d m html htm css xml xsd xsl yaml yml sql bat cmd'.split(' '),
 )

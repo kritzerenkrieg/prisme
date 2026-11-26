@@ -1,5 +1,5 @@
 [package]
-name = "maido"
+name = "prisme"
 version = "0.4.0"
 description = "Markdown and Mermaid reader with a shell beside the docs"
 edition.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [lib]
-name = "maido_lib"
+name = "prisme_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

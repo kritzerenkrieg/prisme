@@ -4,7 +4,7 @@
 //! is verified against the public key before anything is run. An AppImage,
 //! the Windows installer's install and the macOS app replace themselves and
 //! restart; a `.deb` (or `.rpm`) is only told where the new package is, so
-//! maido never asks for a root password.
+//! prisme never asks for a root password.
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -40,7 +40,7 @@ impl Updates {
         if self.unsaved.lock().unwrap().is_empty() {
             Ok(())
         } else {
-            Err("save or discard the edits in every maido window first: maido restarts to update".into())
+            Err("save or discard the edits in every prisme window first: prisme restarts to update".into())
         }
     }
 }
@@ -60,13 +60,13 @@ pub fn set_unsaved(window: WebviewWindow, updates: State<'_, Updates>, unsaved: 
 pub struct Available {
     version: String,
     notes: String,
-    /// maido can install it itself (see `installs_itself`); otherwise `url`
+    /// prisme can install it itself (see `installs_itself`); otherwise `url`
     /// is the package to download.
     install: bool,
     url: String,
 }
 
-/// Packages maido can replace as the user: not a system package, which needs root.
+/// Packages prisme can replace as the user: not a system package, which needs root.
 fn installs_itself() -> bool {
     matches!(bundle_type(), Some(BundleType::AppImage | BundleType::Nsis | BundleType::Msi | BundleType::App))
 }
@@ -75,7 +75,7 @@ fn installs_itself() -> bool {
 #[tauri::command]
 pub async fn check_update(app: AppHandle, updates: State<'_, Updates>) -> Result<Option<Available>, String> {
     if !updates.enabled {
-        return Err("this build of maido does not check for updates".into());
+        return Err("this build of prisme does not check for updates".into());
     }
     let found = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
     let available = found.as_ref().map(|u| Available {
@@ -89,7 +89,7 @@ pub async fn check_update(app: AppHandle, updates: State<'_, Updates>) -> Result
 }
 
 /// Download the update found by `check_update`, verify it, install it and
-/// restart (on Windows the installer closes maido and starts it again).
+/// restart (on Windows the installer closes prisme and starts it again).
 /// Every window restarts, so no window may have unsaved edits: checked
 /// before the download and again before installing, since editing goes on
 /// while it downloads. A download refused that way is kept for the next try.

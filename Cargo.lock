@@ -2544,40 +2544,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
-name = "maido"
-version = "0.4.0"
-dependencies = [
- "ammonia",
- "base64 0.23.1",
- "blake3",
- "comrak",
- "grep-matcher",
- "grep-regex",
- "grep-searcher",
- "gtk",
- "ignore",
- "libc",
- "notify",
- "notify-debouncer-full",
- "nucleo-matcher",
- "portable-pty",
- "serde",
- "serde_json",
- "similar",
- "syntect",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tokio",
- "trash",
- "webkit2gtk",
-]
-
-[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3441,6 +3407,40 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+
+[[package]]
+name = "prisme"
+version = "0.4.0"
+dependencies = [
+ "ammonia",
+ "base64 0.23.1",
+ "blake3",
+ "comrak",
+ "grep-matcher",
+ "grep-regex",
+ "grep-searcher",
+ "gtk",
+ "ignore",
+ "libc",
+ "notify",
+ "notify-debouncer-full",
+ "nucleo-matcher",
+ "portable-pty",
+ "serde",
+ "serde_json",
+ "similar",
+ "syntect",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tokio",
+ "trash",
+ "webkit2gtk",
+]
 
 [[package]]
 name = "proc-macro-crate"

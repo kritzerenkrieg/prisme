@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "maido",
+  "productName": "prisme",
   "version": "0.4.0",
-  "identifier": "dev.maido.viewer",
+  "identifier": "dev.prisme.editor",
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
@@ -23,8 +23,8 @@
     "active": true,
     "targets": ["deb", "appimage"],
     "category": "Utility",
-    "shortDescription": "Markdown and Mermaid reader with a shell beside the docs",
-    "longDescription": "maido opens a folder or a file and reads its Markdown and Mermaid, with an editor for quick fixes and terminals beside the docs for running agents and CLIs while reading.",
+    "shortDescription": "An open prism editor: docs, diagrams, LaTeX and a terminal in one window",
+    "longDescription": "prisme opens a folder or a file and shows it in the light it needs: Markdown rendered, Mermaid drawn, LaTeX compiled to PDF, with an editor beside each and terminals beside the docs for running agents and CLIs while reading.",
     "publisher": "kritzerenkrieg",
     "license": "MIT",
     "licenseFile": "../LICENSE",
@@ -39,7 +39,7 @@
     ],
     "linux": {
       "deb": {
-        "desktopTemplate": "maido.desktop"
+        "desktopTemplate": "prisme.desktop"
       }
     },
     "icon": [

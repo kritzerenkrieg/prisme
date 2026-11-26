@@ -1,6 +1,6 @@
 //! `.tex` files compiled to PDF (C4) by the TeX the system has: `latexmk`,
 //! else Tectonic, else `pdflatex` (or `xelatex` / `lualatex` when the file
-//! asks for it). maido ships no TeX of its own. The source (the file, or the
+//! asks for it). prisme ships no TeX of its own. The source (the file, or the
 //! editor's unsaved text) is written into a folder of maido's cache, one per
 //! file, and compiled there; the file's own folder is on TeX's search path,
 //! so `\input`, `\include`, pictures and bibliographies beside it are found.
@@ -191,7 +191,7 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program) -> Result<
         c
     } else {
         return Err(format!(
-            "No TeX found to compile with: maido uses latexmk, Tectonic or {}. Install TeX Live (or MiKTeX, MacTeX), or Tectonic.",
+            "No TeX found to compile with: prisme uses latexmk, Tectonic or {}. Install TeX Live (or MiKTeX, MacTeX), or Tectonic.",
             program.binary()
         ));
     };
@@ -340,7 +340,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn timeout_stops_what_the_compile_started() {
-        let dir = std::env::temp_dir().join(format!("maido-tex-timeout-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("prisme-tex-timeout-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let pid_file = dir.join("child.pid");
@@ -368,7 +368,7 @@ mod tests {
         if find("latexmk").is_none() && find("tectonic").is_none() && find("pdflatex").is_none() {
             return;
         }
-        let dir = std::env::temp_dir().join(format!("maido-tex-include-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("prisme-tex-include-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src/chapters")).unwrap();
         std::fs::write(dir.join("src/chapters/one.tex"), "Chapter one.").unwrap();
@@ -397,7 +397,7 @@ mod tests {
         if find("latexmk").is_none() && find("tectonic").is_none() && find("pdflatex").is_none() {
             return;
         }
-        let base = std::env::temp_dir().join(format!("maido-tex-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("prisme-tex-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let (docs, out) = (base.join("docs"), base.join("out"));
         std::fs::create_dir_all(&docs).unwrap();
@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn search_path_keeps_defaults() {
-        let p = search_path("MAIDO_TEST_UNSET_VAR", Path::new("/docs"));
+        let p = search_path("PRISME_TEST_UNSET_VAR", Path::new("/docs"));
         let parts: Vec<PathBuf> = std::env::split_paths(&p).collect();
         assert_eq!(parts.first(), Some(&PathBuf::from("/docs")));
         assert_eq!(parts.last(), Some(&PathBuf::new()));

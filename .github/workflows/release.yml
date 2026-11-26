@@ -34,7 +34,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           id=$(gh api -X POST "repos/${{ github.repository }}/releases" \
-            -f tag_name="$TAG" -f name="maido $TAG" \
+            -f tag_name="$TAG" -f name="prisme $TAG" \
             -f body="Download for your system below: a .deb and an AppImage for Linux, a .dmg for macOS, an installer for Windows." \
             -F draft=true --jq .id)
           echo "id=$id" >> "$GITHUB_OUTPUT"

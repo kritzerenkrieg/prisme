@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn create_rename_and_paste() {
-        let dir = std::env::temp_dir().join(format!("maido-files-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("prisme-files-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("docs")).unwrap();
         let ws = Workspace::new(dir.canonicalize().unwrap(), None, vec![]);

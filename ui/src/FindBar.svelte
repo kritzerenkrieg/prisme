@@ -19,7 +19,7 @@
   let total = $state(0)
   const supported = typeof CSS !== 'undefined' && 'highlights' in CSS
 
-  /** Text that is not the document's own: maido's buttons, and math (its text is markup). */
+  /** Text that is not the document's own: prisme's buttons, and math (its text is markup). */
   const SKIP = '.find-bar, .send-term, .diagram-tools, .export-menu, .katex, svg, script, style'
 
   export function focus() {

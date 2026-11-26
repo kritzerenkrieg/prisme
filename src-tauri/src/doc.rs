@@ -360,29 +360,29 @@ pub fn escape(text: &str) -> String {
     out
 }
 
-/// Images: workspace files become `maido-local:<absolute path>` (the frontend
-/// maps them to the asset protocol), remote ones `maido-remote:<url>` (shown
+/// Images: workspace files become `prisme-local:<absolute path>` (the frontend
+/// maps them to the asset protocol), remote ones `prisme-remote:<url>` (shown
 /// only once allowed, F4); anything else, or a path outside the workspace,
 /// is blocked.
 fn rewrite_image(url: &str, dir: &Path, root: &Path, remote: &std::sync::atomic::AtomicUsize) -> String {
     let lower = url.to_ascii_lowercase();
     if lower.starts_with("https://") || lower.starts_with("http://") {
         remote.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        return format!("maido-remote:{url}");
+        return format!("prisme-remote:{url}");
     }
     if lower.starts_with("data:image/") && !lower.starts_with("data:image/svg") {
         return url.to_string();
     }
     if url.contains(':') && !url.starts_with('/') && !url.starts_with('.') {
-        return "maido-blocked:".into();
+        return "prisme-blocked:".into();
     }
     let path = url.split(['#', '?']).next().unwrap_or("");
     let path = percent_decode(path);
     let full = if path.starts_with('/') { PathBuf::from(&path) } else { normalize(&dir.join(&path)) };
     if !full.starts_with(root) {
-        return "maido-blocked:".into();
+        return "prisme-blocked:".into();
     }
-    format!("maido-local:{}", percent_encode(&full.to_string_lossy()))
+    format!("prisme-local:{}", percent_encode(&full.to_string_lossy()))
 }
 
 /// Resolve `.` and `..` without touching the file system.
@@ -449,7 +449,7 @@ static SANITIZER: LazyLock<ammonia::Builder<'static>> = LazyLock::new(|| {
         .add_tag_attributes("div", ["class"])
         .add_tag_attributes("p", ["class"])
         .add_tag_attributes("a", ["id", "class", "data-footnote-ref", "data-footnote-backref", "data-footnote-backref-idx", "aria-label"])
-        .add_url_schemes(["maido-local", "maido-remote", "maido-blocked"])
+        .add_url_schemes(["prisme-local", "prisme-remote", "prisme-blocked"])
         .link_rel(None)
         .attribute_filter(|element, attribute, value| match (element, attribute) {
             ("input", "type") => (value == "checkbox").then_some(value.into()),
@@ -505,9 +505,9 @@ mod tests {
     fn images_rewritten() {
         let d = doc("![a](img/x%20y.png) ![b](https://e.com/b.png) ![c](../../etc/passwd) ![d](file:///etc/passwd)\n");
         let html = &*d.blocks[0].html;
-        assert!(html.contains("src=\"maido-local:/w/img/x%20y.png\""), "{html}");
-        assert!(html.contains("src=\"maido-remote:https://e.com/b.png\""), "{html}");
-        assert!(html.contains("src=\"maido-blocked:\" alt=\"c\"") && !html.contains("passwd"), "{html}");
+        assert!(html.contains("src=\"prisme-local:/w/img/x%20y.png\""), "{html}");
+        assert!(html.contains("src=\"prisme-remote:https://e.com/b.png\""), "{html}");
+        assert!(html.contains("src=\"prisme-blocked:\" alt=\"c\"") && !html.contains("passwd"), "{html}");
         assert_eq!(d.blocks[0].remote_images, 1);
     }
 

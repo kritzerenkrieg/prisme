@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "maido's document windows and the hidden Mermaid helper",
+  "description": "prisme's document windows and the hidden Mermaid helper",
   "windows": [
     "main*",
     "mermaid"

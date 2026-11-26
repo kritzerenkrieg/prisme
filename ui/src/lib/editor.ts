@@ -1,4 +1,4 @@
-// CodeMirror 6 set up for maido (B5): Markdown and Mermaid colouring, search
+// CodeMirror 6 set up for prisme (B5): Markdown and Mermaid colouring, search
 // and replace, undo history kept per file while its tab is open. This module
 // loads with the first edit.
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands'

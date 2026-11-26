@@ -25,7 +25,7 @@ impl GtkFileDialog {
     fn new(title: &str, action: GtkFileChooserAction) -> Self {
         let title = CString::new(title).unwrap();
 
-        // maido: folder pickers say "Select" on the button, not "Open". Other texts stay default.
+        // prisme: folder pickers say "Select" on the button, not "Open". Other texts stay default.
         let accept = if matches!(action, GtkFileChooserAction::SelectFolder) { c"_Select".as_ptr() } else { std::ptr::null() };
         let ptr = unsafe {
             let dialog = gtk_sys::gtk_file_chooser_native_new(

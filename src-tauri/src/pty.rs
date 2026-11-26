@@ -38,7 +38,7 @@ impl Terminals {
         cmd.cwd(cwd);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        cmd.env("TERM_PROGRAM", "maido");
+        cmd.env("TERM_PROGRAM", "prisme");
         let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
         // The slave end belongs to the shell now; keeping it open here would
         // stop the reader from seeing the shell exit.

@@ -8,16 +8,16 @@ export function fragment(html: string, remote: boolean): DocumentFragment {
   t.innerHTML = html
   for (const img of t.content.querySelectorAll('img')) {
     const src = img.getAttribute('src') ?? ''
-    if (src.startsWith('maido-local:')) {
+    if (src.startsWith('prisme-local:')) {
       // The path stays on the element for HTML export, which embeds the file.
-      img.dataset.local = decodeURIComponent(src.slice('maido-local:'.length))
+      img.dataset.local = decodeURIComponent(src.slice('prisme-local:'.length))
       img.src = convertFileSrc(img.dataset.local)
     }
-    else if (src.startsWith('maido-remote:')) {
+    else if (src.startsWith('prisme-remote:')) {
       img.removeAttribute('src')
-      img.dataset.remote = src.slice('maido-remote:'.length)
+      img.dataset.remote = src.slice('prisme-remote:'.length)
       if (remote) img.src = img.dataset.remote
-    } else if (src.startsWith('maido-blocked:')) {
+    } else if (src.startsWith('prisme-blocked:')) {
       img.removeAttribute('src')
       img.classList.add('blocked')
     }

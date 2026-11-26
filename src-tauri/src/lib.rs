@@ -86,6 +86,11 @@ fn new_workspace(app: &AppHandle, root: PathBuf, initial: Option<String>) -> Arc
     Arc::new(Workspace::new(root, initial, extras))
 }
 
+/// A window is named for its workspace: `Prisme [<root folder>]`.
+fn window_title(root: &Path) -> String {
+    format!("Prisme [{}]", folder_name(root))
+}
+
 /// A workspace's name: its folder's name (or the whole path for `/`).
 fn folder_name(root: &Path) -> String {
     root.file_name().map_or_else(|| root.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned())
@@ -146,7 +151,7 @@ fn read_file(ws: &Workspace, path: &str) -> Result<(PathBuf, Option<String>, Str
     let full = ws.resolve(path)?;
     let meta = std::fs::metadata(&full).map_err(|e| e.to_string())?;
     if meta.len() > MAX_FILE {
-        return Err(format!("{path} is {} MB; maido opens files up to 20 MB", meta.len() / 1024 / 1024));
+        return Err(format!("{path} is {} MB; prisme opens files up to 20 MB", meta.len() / 1024 / 1024));
     }
     let bytes = std::fs::read(&full).map_err(|e| e.to_string())?;
     let hash = blake3::hash(&bytes).to_hex()[..16].to_string();
@@ -227,14 +232,14 @@ async fn read_pdf(window: WebviewWindow, windows: State<'_, Windows>, path: Stri
     let full = ws.resolve(&path)?;
     let meta = std::fs::metadata(&full).map_err(|e| e.to_string())?;
     if meta.len() > 50 * 1024 * 1024 {
-        return Err(format!("{path} is {} MB; maido shows PDFs up to 50 MB", meta.len() / 1024 / 1024));
+        return Err(format!("{path} is {} MB; prisme shows PDFs up to 50 MB", meta.len() / 1024 / 1024));
     }
     std::fs::read(&full).map(Response::new).map_err(|e| e.to_string())
 }
 
 /// A `.tex` file compiled to PDF by the system's TeX (C4): the file as saved,
 /// or `text` (the editor's unsaved text). The PDF's bytes, or TeX's errors.
-/// It is compiled in maido's cache, never in the workspace.
+/// It is compiled in prisme's cache, never in the workspace.
 #[tauri::command]
 async fn compile_latex(app: AppHandle, window: WebviewWindow, windows: State<'_, Windows>, path: String, text: Option<String>) -> Result<Response, String> {
     let ws = windows.get(&window)?;
@@ -294,7 +299,7 @@ async fn save_file(window: WebviewWindow, windows: State<'_, Windows>, path: Str
         return Err("conflict".into());
     }
     let name = full.file_name().ok_or("no file name")?.to_string_lossy().into_owned();
-    let tmp = full.with_file_name(format!(".{name}.maido-save"));
+    let tmp = full.with_file_name(format!(".{name}.prisme-save"));
     let perms = std::fs::metadata(&full).map_err(|e| e.to_string())?.permissions();
     std::fs::write(&tmp, text.as_bytes()).map_err(|e| e.to_string())?;
     let _ = std::fs::set_permissions(&tmp, perms);
@@ -331,7 +336,7 @@ async fn fs_paste(window: WebviewWindow, windows: State<'_, Windows>, paths: Vec
 }
 
 /// The Edit menu's clipboard (N2): WebKitGTK does not let a page read it.
-/// Never on the main thread: on X11, text copied inside maido is owned by
+/// Never on the main thread: on X11, text copied inside prisme is owned by
 /// its own GTK window, which answers the request on the main thread, so a
 /// read waiting there froze the window until the request timed out.
 #[tauri::command]
@@ -385,7 +390,7 @@ async fn open_folder(app: AppHandle, window: WebviewWindow, windows: State<'_, W
     app.state::<Terminals>().close_window(window.label());
     let ws = new_workspace(&app, root.clone(), None);
     windows.0.lock().unwrap().insert(window.label().to_string(), ws.clone());
-    let _ = window.set_title(&format!("{} — maido", folder_name(&root)));
+    let _ = window.set_title(&window_title(&root));
     ws.watch(app.clone(), window.label().to_string());
     Ok(true)
 }
@@ -532,7 +537,7 @@ fn resolve_link(window: WebviewWindow, windows: State<Windows>, from: String, hr
     Ok(windows.get(&window)?.resolve_link(&from, &href).map(|(path, anchor)| Link { path, anchor }))
 }
 
-/// Web and mail links open outside maido; nothing else does (F3).
+/// Web and mail links open outside prisme; nothing else does (F3).
 #[tauri::command]
 fn open_external(app: AppHandle, url: String) -> Result<(), String> {
     let lower = url.to_ascii_lowercase();
@@ -589,7 +594,7 @@ fn mermaid_done(app: AppHandle, window: WebviewWindow, mermaid: State<Mermaid>, 
 
 /// Save an export (HTML, SVG, PNG; the bytes are the request body) where you
 /// choose in the system's save dialog, starting in the folder of the
-/// workspace file named by the `x-near` header (L1). The only way maido writes
+/// workspace file named by the `x-near` header (L1). The only way prisme writes
 /// outside the workspace, and only to the path you picked. Returns that path,
 /// or None if you cancelled.
 #[tauri::command]
@@ -634,7 +639,7 @@ async fn image_data(window: WebviewWindow, windows: State<'_, Windows>, path: St
         "avif" => "image/avif",
         "bmp" => "image/bmp",
         "ico" => "image/x-icon",
-        _ => return Err(format!("{rel}: not an image maido embeds")),
+        _ => return Err(format!("{rel}: not an image prisme embeds")),
     };
     let bytes = std::fs::read(&full).map_err(|e| e.to_string())?;
     Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
@@ -734,7 +739,7 @@ fn open_window(app: &AppHandle, root: PathBuf, initial: Option<String>) -> Resul
     let ws = new_workspace(app, root.clone(), initial);
     windows.0.lock().unwrap().insert(label.clone(), ws.clone());
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
-        .title(format!("{} — maido", folder_name(&root)))
+        .title(window_title(&root))
         .inner_size(1200.0, 800.0)
         .build()
         .map_err(|e| e.to_string())?;
@@ -783,7 +788,7 @@ fn route_pinch(window: &WebviewWindow) {
     });
 }
 
-/// `maido [path]`: with no path, the last folder opened, or the home folder (M2).
+/// `prisme [path]`: with no path, the last folder opened, or the home folder (M2).
 fn open_from_args(app: &AppHandle, args: &[String], cwd: &Path) {
     let target = match args.get(1) {
         Some(arg) => workspace::target(Some(arg), cwd),
@@ -795,7 +800,7 @@ fn open_from_args(app: &AppHandle, args: &[String], cwd: &Path) {
     match target {
         Ok((root, file)) => {
             if let Err(e) = open_window(app, root, file) {
-                eprintln!("maido: {e}");
+                eprintln!("prisme: {e}");
             }
         }
         Err(e) => eprintln!("{e}"),
@@ -808,7 +813,7 @@ pub fn run() {
     // helper processes by relative path; paths on the command line are
     // relative to where it was launched, which the AppImage runtime keeps in
     // $OWD. Stay there until the window opens: a second launch sends its
-    // folder to the running maido (single instance) from here.
+    // folder to the running prisme (single instance) from here.
     let mount = std::env::current_dir().ok();
     if std::env::var_os("APPIMAGE").is_some()
         && let Some(owd) = std::env::var_os("OWD")
@@ -832,7 +837,7 @@ pub fn run() {
     }
     #[cfg(desktop)]
     {
-        // A second `maido <path>` opens its window in this process (E1).
+        // A second `prisme <path>` opens its window in this process (E1).
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             open_from_args(app, &argv, Path::new(&cwd));
         }));
@@ -862,13 +867,18 @@ pub fn run() {
                 if window.label() == mermaid::LABEL {
                     app.state::<Mermaid>().closed();
                     return;
+            // Saved state from before the rename (maido 0.4) comes along,
+            // before anything reads or writes the new folders.
+            for dir in [app.path().app_data_dir(), app.path().app_cache_dir()].into_iter().flatten() {
+                workspace::take_over_maido(&dir);
+            }
                 }
                 app.state::<Terminals>().close_window(window.label());
                 app.state::<Updates>().closed(window.label());
                 let windows = app.state::<Windows>();
                 let mut map = windows.0.lock().unwrap();
                 map.remove(window.label());
-                // The hidden helper alone must not keep maido running.
+                // The hidden helper alone must not keep prisme running.
                 if map.is_empty() {
                     app.exit(0);
                 }
@@ -926,5 +936,5 @@ pub fn run() {
             update::set_unsaved,
         ])
         .run(context)
-        .expect("error while running maido");
+        .expect("error while running prisme");
 }

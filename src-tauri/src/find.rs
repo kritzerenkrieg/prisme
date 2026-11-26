@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn search_files() {
-        let root = std::env::temp_dir().join(format!("maido-find-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("prisme-find-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("sub")).unwrap();
         std::fs::write(root.join("a.md"), "Hello world\nnothing\nhello again, World\n").unwrap();

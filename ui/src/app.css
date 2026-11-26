@@ -250,22 +250,6 @@ button {
   border-right: 1px solid var(--line);
   font-size: 13px;
 }
-/* The logo as a faint mark, pushed past the bottom-left corner so mostly its upper-right
- * part shows. A mask in the text colour, so it follows the theme. */
-.sidebar::after {
-  content: '';
-  position: absolute;
-  z-index: 1;
-  left: -110px;
-  bottom: -170px;
-  height: 520px;
-  aspect-ratio: 0.6632;
-  background: var(--fg);
-  opacity: 0.1;
-  -webkit-mask: url(/maido-mark.svg) center / 100% 100% no-repeat;
-  mask: url(/maido-mark.svg) center / 100% 100% no-repeat;
-  pointer-events: none;
-}
 .sidebar-head {
   padding: 10px 12px 6px;
   white-space: nowrap;

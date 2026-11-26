@@ -1,4 +1,4 @@
-//! A workspace: the folder `maido <path>` opened, its open documents and its
+//! A workspace: the folder `prisme <path>` opened, its open documents and its
 //! file watcher (E1, E2). One per window.
 
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ pub struct Extra {
 pub struct Workspace {
     pub root: PathBuf,
     extras: Mutex<Vec<Extra>>,
-    /// The file `maido <file>` was started with, relative to `root`.
+    /// The file `prisme <file>` was started with, relative to `root`.
     pub initial: Option<String>,
     pub docs: Mutex<HashMap<String, Document>>,
     watcher: Mutex<Option<Arc<Mutex<Watcher>>>>,
@@ -278,7 +278,7 @@ pub fn is_doc(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()).is_some_and(|e| DOC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
-/// Documents, pictures, PDFs and source files: what maido shows rendered or
+/// Documents, pictures, PDFs and source files: what prisme shows rendered or
 /// highlighted, so the tree lists them even when "all files" is off.
 pub fn is_readable(path: &Path) -> bool {
     is_doc(path)
@@ -289,20 +289,20 @@ pub fn is_readable(path: &Path) -> bool {
         })
 }
 
-/// `maido <path>`: a folder opens as the workspace; a file opens with its
+/// `prisme <path>`: a folder opens as the workspace; a file opens with its
 /// folder as the workspace. (With no path, see [`last_folder`].)
 pub fn target(arg: Option<&str>, cwd: &Path) -> Result<(PathBuf, Option<String>), String> {
     let path = cwd.join(arg.unwrap_or("."));
-    let path = path.canonicalize().map_err(|e| format!("maido: {}: {e}", path.display()))?;
+    let path = path.canonicalize().map_err(|e| format!("prisme: {}: {e}", path.display()))?;
     if path.is_dir() {
         return Ok((path, None));
     }
-    let root = path.parent().ok_or("maido: no parent folder")?.to_path_buf();
+    let root = path.parent().ok_or("prisme: no parent folder")?.to_path_buf();
     let file = path.file_name().map(|f| f.to_string_lossy().into_owned());
     Ok((root, file))
 }
 
-/// `maido` with no path (M2): the last folder opened, from the settings'
+/// `prisme` with no path (M2): the last folder opened, from the settings'
 /// recent folders, or `home` when there is none or it is gone.
 pub fn last_folder(settings: &serde_json::Value, home: &Path) -> PathBuf {
     settings
@@ -312,6 +312,20 @@ pub fn last_folder(settings: &serde_json::Value, home: &Path) -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute() && p.is_dir())
         .unwrap_or_else(|| home.to_path_buf())
+}
+
+/// prisme was called maido up to 0.4, with this identifier.
+pub const MAIDO_IDENTIFIER: &str = "dev.maido.viewer";
+
+/// The first start after the rename takes over maido's folder beside `dir`
+/// (sessions and settings, or the Mermaid and LaTeX caches): moved, not
+/// copied, and only while prisme has no folder of its own yet, so it
+/// happens once and never overwrites anything. True when it moved.
+pub fn take_over_maido(dir: &Path) -> bool {
+    let Some(old) = dir.parent().map(|p| p.join(MAIDO_IDENTIFIER)) else {
+        return false;
+    };
+    !dir.exists() && old.is_dir() && std::fs::rename(&old, dir).is_ok()
 }
 
 /// Tabs, scroll positions and toggles per workspace, kept by the frontend
@@ -352,8 +366,27 @@ impl Sessions {
 mod tests {
     use super::*;
 
+    #[test]
+    fn takes_over_maido_once() {
+        let base = std::env::temp_dir().join(format!("prisme-takeover-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (old, new) = (base.join(MAIDO_IDENTIFIER), base.join("dev.prisme.editor"));
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("sessions.json"), "{\"\":{}}").unwrap();
+        assert!(take_over_maido(&new));
+        assert_eq!(std::fs::read_to_string(new.join("sessions.json")).unwrap(), "{\"\":{}}");
+        assert!(!old.exists());
+        // A maido folder that turns up later (maido run again) is left alone.
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("sessions.json"), "old").unwrap();
+        assert!(!take_over_maido(&new));
+        assert_eq!(std::fs::read_to_string(new.join("sessions.json")).unwrap(), "{\"\":{}}");
+        assert!(!take_over_maido(&base.join("nothing-here").join("x")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     fn temp_workspace() -> (PathBuf, Workspace) {
-        let dir = std::env::temp_dir().join(format!("maido-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("prisme-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("docs/sub")).unwrap();
         std::fs::create_dir_all(dir.join("build")).unwrap();
@@ -404,7 +437,7 @@ mod tests {
     #[test]
     fn added_folders() {
         let (dir, ws) = temp_workspace();
-        let other = std::env::temp_dir().join(format!("maido-other-{}", std::process::id()));
+        let other = std::env::temp_dir().join(format!("prisme-other-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&other);
         std::fs::create_dir_all(other.join("sub")).unwrap();
         std::fs::write(other.join("sub/c.md"), "x").unwrap();
