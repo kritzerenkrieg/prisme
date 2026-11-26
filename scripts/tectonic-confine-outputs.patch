@@ -1,0 +1,21 @@
+--- a/src/driver.rs
++++ b/src/driver.rs
+@@ -1641,6 +1641,18 @@
+                 continue;
+             }
+ 
++            // prisme: an output name is a path inside the output folder. One
++            // that is absolute, or climbs out of it with `..`, would let a
++            // document write anywhere (`\openout` takes any name), so it is
++            // not written.
++            if !Path::new(name)
++                .components()
++                .all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir))
++            {
++                tt_warning!(status, "not writing `{}`: it is outside the output folder", name);
++                continue;
++            }
++
+             let real_path = root.join(name);
+             let byte_len = Byte::from_u128(file.data.len() as u128).unwrap();
+             status.note_highlighted(
