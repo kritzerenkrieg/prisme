@@ -51,7 +51,25 @@ impl Compiler {
 /// Whether the bundled Tectonic has built its format file in `cache`: until
 /// then, a compile downloads packages first.
 fn has_format(cache: &Path) -> bool {
-    std::fs::read_dir(cache.join("formats")).is_ok_and(|mut d| d.next().is_some())
+    std::fs::read_dir(cache.join("formats")).is_ok_and(|d| d.flatten().any(|e| e.path().extension().is_some_and(|x| x == "fmt")))
+}
+
+/// The shipped cache's stamp (written by `scripts/fetch-tectonic.sh`), and
+/// the mark a copy of it leaves in Tectonic's cache once it all went through.
+const SEED_STAMP: &str = "prisme-seed";
+const SEEDED: &str = ".prisme-seeded";
+
+/// Whether `cache` holds all of `seed`: a copy cut short, or one from an
+/// older prisme's seed, is not, and is made whole on the next compile.
+fn seeded(cache: &Path, seed: &Path) -> bool {
+    let stamp = std::fs::read(seed.join(SEED_STAMP)).unwrap_or_default();
+    std::fs::read(cache.join(SEEDED)).is_ok_and(|mark| mark == stamp)
+}
+
+/// Copy the files `seed` has and `cache` lacks, then mark it seeded.
+fn seed_cache(seed: &Path, cache: &Path) -> std::io::Result<()> {
+    crate::workspace::copy_missing(seed, cache)?;
+    std::fs::write(cache.join(SEEDED), std::fs::read(seed.join(SEED_STAMP)).unwrap_or_default())
 }
 
 /// Whether the system has a TeX that compiles `program`'s documents.
@@ -64,24 +82,6 @@ fn system_tex(program: Program) -> bool {
 /// and no shipped cache (`seed`) to copy one from.
 pub fn first_run(tectonic_cache: &Path, seed: Option<&Path>) -> bool {
     !system_tex(Program::Pdf) && bundled().is_some() && !has_format(tectonic_cache) && !seed.is_some_and(has_format)
-}
-
-/// Copy what `from` holds into `to`, keeping the files `to` already has.
-fn copy_missing(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(to)?;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let target = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_missing(&entry.path(), &target)?;
-        } else if !target.exists() {
-            // Through a temporary name, so a copy cut short never passes for a whole file.
-            let part = to.join(format!(".{}.part", entry.file_name().to_string_lossy()));
-            std::fs::copy(entry.path(), &part)?;
-            std::fs::rename(&part, &target)?;
-        }
-    }
-    Ok(())
 }
 
 /// The TeX engine a document asks for.
@@ -304,14 +304,14 @@ pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path, tectonic
 
     let src_dir = src.parent().unwrap_or(Path::new("."));
     if let Some(seed) = seed
-        && !has_format(tectonic_cache)
         && has_format(seed)
+        && !seeded(tectonic_cache, seed)
         && !system_tex(program(text))
         && bundled().is_some()
     {
         let _first = compiler.first.lock().unwrap();
-        if !has_format(tectonic_cache) {
-            copy_missing(seed, tectonic_cache).map_err(|e| format!("Could not set up the bundled TeX in {}: {e}", tectonic_cache.display()))?;
+        if !seeded(tectonic_cache, seed) {
+            seed_cache(seed, tectonic_cache).map_err(|e| format!("Could not set up the bundled TeX in {}: {e}", tectonic_cache.display()))?;
         }
     }
     let (mut cmd, mut timeout) = command(&file, out, src_dir, program(text), tectonic_cache)?;
@@ -523,13 +523,23 @@ mod tests {
         std::fs::write(seed.join("bundles/data/a.sty"), "seed").unwrap();
         std::fs::create_dir_all(cache.join("bundles/data")).unwrap();
         std::fs::write(cache.join("bundles/data/a.sty"), "newer").unwrap();
-        assert!(has_format(&seed) && !has_format(&cache));
+        std::fs::write(seed.join(SEED_STAMP), "1").unwrap();
+        // A copy cut short: the format came over (and a part file), a package did not.
+        std::fs::create_dir_all(cache.join("formats")).unwrap();
+        std::fs::write(cache.join("formats/.y.fmt.part"), "half").unwrap();
+        assert!(has_format(&seed) && !has_format(&cache), "a part file is no format");
+        std::fs::write(cache.join("formats/x.fmt"), "fmt").unwrap();
+        assert!(!seeded(&cache, &seed));
 
-        copy_missing(&seed, &cache).unwrap();
-        assert!(has_format(&cache));
+        seed_cache(&seed, &cache).unwrap();
+        assert!(seeded(&cache, &seed));
         assert_eq!(std::fs::read_to_string(cache.join("bundles/data/a.sty")).unwrap(), "newer");
-        let names: Vec<_> = std::fs::read_dir(cache.join("formats")).unwrap().map(|e| e.unwrap().file_name()).collect();
-        assert_eq!(names, ["x.fmt"]);
+        // A newer prisme's seed is copied in again.
+        std::fs::write(seed.join(SEED_STAMP), "2").unwrap();
+        std::fs::write(seed.join("bundles/data/b.sty"), "new package").unwrap();
+        assert!(!seeded(&cache, &seed));
+        seed_cache(&seed, &cache).unwrap();
+        assert!(seeded(&cache, &seed) && cache.join("bundles/data/b.sty").is_file());
         let _ = std::fs::remove_dir_all(&base);
     }
 

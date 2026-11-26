@@ -317,15 +317,44 @@ pub fn last_folder(settings: &serde_json::Value, home: &Path) -> PathBuf {
 /// prisme was called maido up to 0.4, with this identifier.
 pub const MAIDO_IDENTIFIER: &str = "dev.maido.viewer";
 
+/// Written into prisme's folder once maido's is taken over.
+const TAKEN_OVER: &str = ".from-maido";
+
 /// The first start after the rename takes over maido's folder beside `dir`
-/// (sessions and settings, or the Mermaid and LaTeX caches): moved, not
-/// copied, and only while prisme has no folder of its own yet, so it
-/// happens once and never overwrites anything. True when it moved.
+/// (sessions and settings, or the Mermaid and LaTeX caches): moved while
+/// prisme has no folder of its own yet, else (the move failed before, and
+/// prisme has written its own since) the files prisme lacks are copied, so
+/// nothing is overwritten. Done once: a mark in `dir` says so, written only
+/// when it all went through, so a failed takeover is tried again on the
+/// next start. True when it happened now.
 pub fn take_over_maido(dir: &Path) -> bool {
     let Some(old) = dir.parent().map(|p| p.join(MAIDO_IDENTIFIER)) else {
         return false;
     };
-    !dir.exists() && old.is_dir() && std::fs::rename(&old, dir).is_ok()
+    if !old.is_dir() || dir.join(TAKEN_OVER).exists() {
+        return false;
+    }
+    let moved = !dir.exists() && std::fs::rename(&old, dir).is_ok();
+    (moved || copy_missing(&old, dir).is_ok()) && std::fs::write(dir.join(TAKEN_OVER), "").is_ok()
+}
+
+/// Copy what `from` holds into `to`, keeping the files `to` already has.
+/// Each file goes through a temporary name, so a copy cut short never
+/// passes for a whole file.
+pub fn copy_missing(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_missing(&entry.path(), &target)?;
+        } else if !target.exists() {
+            let part = to.join(format!(".{}.part", entry.file_name().to_string_lossy()));
+            std::fs::copy(entry.path(), &part)?;
+            std::fs::rename(&part, &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// Tabs, scroll positions and toggles per workspace, kept by the frontend
@@ -382,6 +411,26 @@ mod tests {
         assert!(!take_over_maido(&new));
         assert_eq!(std::fs::read_to_string(new.join("sessions.json")).unwrap(), "{\"\":{}}");
         assert!(!take_over_maido(&base.join("nothing-here").join("x")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A takeover that failed, after which prisme wrote a folder of its own,
+    /// is done on a later start: maido's files come over, prisme's stay.
+    #[test]
+    fn takes_over_maido_after_a_failed_move() {
+        let base = std::env::temp_dir().join(format!("prisme-takeover-retry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (old, new) = (base.join(MAIDO_IDENTIFIER), base.join("dev.prisme.editor"));
+        std::fs::create_dir_all(old.join("mermaid")).unwrap();
+        std::fs::write(old.join("sessions.json"), "maido").unwrap();
+        std::fs::write(old.join("mermaid/a.svg"), "svg").unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        std::fs::write(new.join("sessions.json"), "prisme").unwrap();
+
+        assert!(take_over_maido(&new));
+        assert_eq!(std::fs::read_to_string(new.join("sessions.json")).unwrap(), "prisme");
+        assert_eq!(std::fs::read_to_string(new.join("mermaid/a.svg")).unwrap(), "svg");
+        assert!(!take_over_maido(&new), "done once");
         let _ = std::fs::remove_dir_all(&base);
     }
 

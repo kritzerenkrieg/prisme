@@ -66,8 +66,10 @@ export class Session {
     // only sometimes).
     this.term.attachCustomKeyEventHandler((e) => {
       // Ctrl+= / Ctrl+- / Ctrl+0 size the text, as in other terminals (the
-      // shell never sees them).
-      const step = !e.ctrlKey || e.altKey || e.metaKey ? null : ZOOM_KEYS[e.code]
+      // shell never sees them). Ctrl+Shift+- is Ctrl+_, Readline's undo: it
+      // goes to the shell.
+      const underscore = e.code === 'Minus' && e.shiftKey
+      const step = !e.ctrlKey || e.altKey || e.metaKey || underscore ? null : ZOOM_KEYS[e.code]
       if (step != null) {
         e.preventDefault()
         if (e.type === 'keydown') opts.onzoom(step)
@@ -116,14 +118,21 @@ export class Session {
     this.opts.onexit()
   }
 
+  /** A font size asked for while hidden, applied once shown. */
+  private pendingFont: number | null = null
+
   resize(): void {
-    if (this.term.element?.offsetParent) this.fit.fit()
+    if (!this.term.element?.offsetParent) return
+    // Set while visible, so xterm measures its cells at the new size before
+    // the fit: a hidden terminal's measurement would keep the old one.
+    if (this.pendingFont != null && this.term.options.fontSize !== this.pendingFont) this.term.options.fontSize = this.pendingFont
+    this.pendingFont = null
+    this.fit.fit()
   }
 
   /** Draw the text at `px` and fit the rows and columns to it. */
   setFontSize(px: number): void {
-    if (this.term.options.fontSize === px) return
-    this.term.options.fontSize = px
+    this.pendingFont = px
     this.resize()
   }
 
