@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Put the Tectonic that ships beside prisme in src-tauri/binaries/, named as Tauri wants a
-# sidecar (prisme-tectonic-<target triple>), from Tectonic's own release, its checksum checked.
+# sidecar (prisme-tectonic-<target triple>), its checksum checked. It is Tectonic's release built
+# with scripts/tectonic-confine-outputs.patch by the `tectonic` workflow, which publishes it as the
+# pre-release $RELEASE of prisme's repository.
 # Then compile the documents in scripts/tectonic-seed/ with it, into a fresh cache
 # (src-tauri/binaries/tectonic-seed/): the packages they use and Tectonic's format file, which ship
 # with prisme so those documents compile offline from the first time.
@@ -11,18 +13,19 @@
 set -euo pipefail
 
 VERSION=0.17.0
-BASE="https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40$VERSION"
+RELEASE="tectonic-$VERSION-prisme.1"
+BASE="https://github.com/kritzerenkrieg/prisme/releases/download/$RELEASE"
 DIR="$(cd "$(dirname "$0")/.." && pwd)/src-tauri/binaries"
 
 # The release archive for a target, and its SHA-256. Linux gets the static (musl) build either way.
 asset() {
   case "$1" in
-    x86_64-unknown-linux-*) echo "x86_64-unknown-linux-musl.tar.gz 8533d07f9ccbd7a65824b9e0459041bca34af1eb33daba48f59215593753a3b7" ;;
-    aarch64-unknown-linux-*) echo "aarch64-unknown-linux-musl.tar.gz b10954a95404f3ab2328d2fa59a5ebab8e657f893fab096f98be8db7c0c979b8" ;;
-    x86_64-apple-darwin) echo "x86_64-apple-darwin.tar.gz 7c90ef5b6ddb1eb1937e4337add5237b79338e4b9676459fa91187d24d6cdf80" ;;
-    aarch64-apple-darwin) echo "aarch64-apple-darwin.tar.gz a3f1cac7c5678f01661a92212f58480ae3b0634115d880dbc59e2953ded45667" ;;
-    x86_64-pc-windows-msvc) echo "x86_64-pc-windows-msvc.zip f61ce51f0b0ade1015b7de7ef368541c5424e9756ecbd0d7af97d6d48030845f" ;;
-    *) echo "No Tectonic $VERSION release for $1." >&2; exit 1 ;;
+    x86_64-unknown-linux-*) echo "x86_64-unknown-linux-musl.tar.gz f9043471d1cc1fbef9a72c58e6652202bdec4719f2df2de2cadbb16cd3e1dc90" ;;
+    aarch64-unknown-linux-*) echo "aarch64-unknown-linux-musl.tar.gz 66d01277ab9e2fe8f4469911d5e101430012e38cbbecae8f0af6c6bc3101a8ea" ;;
+    x86_64-apple-darwin) echo "x86_64-apple-darwin.tar.gz 561b2fd770501dab18cc157bb95adc20e725dc05c1c251ff374c727bc9f27a69" ;;
+    aarch64-apple-darwin) echo "aarch64-apple-darwin.tar.gz 66e5134678ad64a831155a90df71d21ef410471f65dbcccad188f463522f51a1" ;;
+    x86_64-pc-windows-msvc) echo "x86_64-pc-windows-msvc.zip 80b83d8dee8bb307fb816d98a8f2b3943a3ad43b4663dd31391beb380ba780a3" ;;
+    *) echo "No $RELEASE build for $1." >&2; exit 1 ;;
   esac
 }
 
@@ -32,10 +35,10 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum 
 fetch() {
   read -r name sum < <(asset "$1")
   local tmp; tmp="$(mktemp -d)"
-  curl -fsSL --retry 3 -o "$tmp/$name" "$BASE/tectonic-$VERSION-$name"
+  curl -fsSL --retry 3 -o "$tmp/$name" "$BASE/$RELEASE-$name"
   local got; got="$(sha256 "$tmp/$name")"
   if [ "$got" != "$sum" ]; then
-    echo "tectonic-$VERSION-$name: checksum $got, expected $sum." >&2
+    echo "$RELEASE-$name: checksum $got, expected $sum." >&2
     exit 1
   fi
   case "$name" in
@@ -52,9 +55,9 @@ TARGET="${1:-${TAURI_ENV_TARGET_TRIPLE:-$(rustc -vV | sed -n 's/^host: //p')}}"
 EXT=""; [[ "$TARGET" == *windows* ]] && EXT=".exe"
 OUT="$DIR/prisme-tectonic-$TARGET$EXT"
 STAMP="$OUT.version"
-if [ ! -f "$OUT" ] || [ "$(cat "$STAMP" 2>/dev/null)" != "$VERSION" ]; then
+if [ ! -f "$OUT" ] || [ "$(cat "$STAMP" 2>/dev/null)" != "$RELEASE" ]; then
   mkdir -p "$DIR"
-  echo "Fetching Tectonic $VERSION for $TARGET"
+  echo "Fetching $RELEASE for $TARGET"
   if [ "$TARGET" = universal-apple-darwin ]; then
     fetch x86_64-apple-darwin "$OUT.x86_64"
     fetch aarch64-apple-darwin "$OUT.aarch64"
@@ -63,7 +66,7 @@ if [ ! -f "$OUT" ] || [ "$(cat "$STAMP" 2>/dev/null)" != "$VERSION" ]; then
   else
     fetch "$TARGET" "$OUT"
   fi
-  echo "$VERSION" > "$STAMP"
+  echo "$RELEASE" > "$STAMP"
 fi
 
 # The starting cache, compiled again when the seed documents change (into what is there, so only
