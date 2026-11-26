@@ -5,7 +5,7 @@
   // The last PDF that compiled stays on screen while the next one compiles,
   // and under TeX's errors when it fails.
   import { onDestroy, untrack } from 'svelte'
-  import { api } from './lib/api'
+  import { api, ASK_LUALATEX } from './lib/api'
   import PdfPage from './PdfPage.svelte'
 
   interface Props {
@@ -14,8 +14,14 @@
     version: number
     /** The editor's unsaved text, or null for the file as saved. */
     text: string | null
+    /** The workspace allows the system's LuaLaTeX. */
+    lualatex: boolean
+    /** Allow it for the workspace (the answer to the question this tab asks). */
+    onallowlualatex: () => void
   }
-  let { path, version, text }: Props = $props()
+  let { path, version, text, lualatex, onallowlualatex }: Props = $props()
+  /** The document asks for LuaLaTeX, which the workspace has not allowed yet. */
+  let askLua = $state(false)
 
   /** Typing pauses this long before the unsaved text is compiled. */
   const TYPING_PAUSE = 700
@@ -58,13 +64,18 @@
     compiling = true
     api.latexFirstRun().then((first) => (firstRun = first && compiling), () => {})
     try {
-      const pdf = await api.compileLatex(path, text)
+      const pdf = await api.compileLatex(path, text, lualatex)
       if (gone) return
       bytes = pdf
       error = ''
+      askLua = false
       compiled++
     } catch (e) {
       if (gone) return
+      if (String(e) === ASK_LUALATEX) {
+        askLua = true
+        return
+      }
       error = String(e)
       showLog = true
     } finally {
@@ -93,6 +104,20 @@
 </script>
 
 <div class="tex-pdf">
+  {#if askLua}
+    <div class="tex-error">
+      <div class="tex-error-head">
+        <span>This document asks for LuaLaTeX. Lua code in a document can write files outside its folder, so only compile it if you trust this folder's documents.</span>
+        <button
+          onclick={() => {
+            onallowlualatex()
+            askLua = false
+            void compile()
+          }}>Compile with LuaLaTeX</button
+        >
+      </div>
+    </div>
+  {/if}
   {#if error}
     <div class="tex-error">
       <div class="tex-error-head">

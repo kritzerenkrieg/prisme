@@ -29,6 +29,12 @@ const FIRST_TIMEOUT: Duration = Duration::from_secs(600);
 /// The name the bundled Tectonic is installed under, beside prisme's own
 /// program (not `tectonic`, so it never clashes with a system package).
 const BUNDLED: &str = "prisme-tectonic";
+/// What `compile` returns, as its error, for a document that asks for the
+/// system's LuaLaTeX before that was allowed in its workspace: Lua code in
+/// a document can write outside the output folder (LuaTeX's `io.output`
+/// does not heed `openout_any`), so the frontend asks first.
+pub const ASK_LUALATEX: &str = "prisme:ask-lualatex";
+
 /// A bare engine runs at most this many times for one compile.
 const MAX_RUNS: usize = 5;
 /// At most this many lines of the log come back with an error.
@@ -376,8 +382,13 @@ fn wants_rerun(log: &str) -> bool {
 /// Compile `text` (the source of `src`, a `.tex` file) in `out`; the PDF's bytes,
 /// or the errors from TeX's log. `tectonic_cache` is where the bundled
 /// Tectonic keeps its packages, and `seed` the cache that ships with prisme,
-/// copied into it before its first compile.
-pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path, tectonic_cache: &Path, seed: Option<&Path>) -> Result<Vec<u8>, String> {
+/// copied into it before its first compile. `lualatex`: the system's
+/// LuaLaTeX may run (else such a document returns [`ASK_LUALATEX`]).
+pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path, tectonic_cache: &Path, seed: Option<&Path>, lualatex: bool) -> Result<Vec<u8>, String> {
+    // The bundled Tectonic is XeTeX and runs no Lua: only the system's LuaLaTeX asks.
+    if program(text) == Program::Lua && system_tex(Program::Lua) && !lualatex {
+        return Err(ASK_LUALATEX.into());
+    }
     let lock = compiler.lock(out);
     let _one = lock.lock().unwrap();
     std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
@@ -582,7 +593,7 @@ mod tests {
         let text = "\\documentclass{article}\n\\begin{document}\n\\include{chapters/one}\n\\end{document}\n";
         let src = dir.join("src/main.tex");
         std::fs::write(&src, text).unwrap();
-        let pdf = compile(&Compiler::default(), &src, text, &dir.join("out"), &dir.join("tectonic"), None);
+        let pdf = compile(&Compiler::default(), &src, text, &dir.join("out"), &dir.join("tectonic"), None, false);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(pdf.unwrap().starts_with(b"%PDF"));
     }
@@ -614,13 +625,13 @@ mod tests {
         std::fs::write(&src, text).unwrap();
         let compiler = Compiler::default();
 
-        let pdf = compile(&compiler, &src, text, &out, &base.join("tectonic"), None).unwrap();
+        let pdf = compile(&compiler, &src, text, &out, &base.join("tectonic"), None, false).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
         let beside: Vec<_> = std::fs::read_dir(&docs).unwrap().map(|e| e.unwrap().file_name()).collect();
         assert_eq!(beside.len(), 2, "{beside:?}");
 
         let broken = text.replace("Hello", "\\nosuchcommand Hello");
-        let err = compile(&compiler, &src, &broken, &out, &base.join("tectonic"), None).unwrap_err();
+        let err = compile(&compiler, &src, &broken, &out, &base.join("tectonic"), None, false).unwrap_err();
         assert!(err.contains("Undefined control sequence"), "{err}");
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -717,16 +728,16 @@ mod tests {
         let text = "\\documentclass{article}\n\\begin{document}\nSee \\cite{knuth} and \\ref{s}.\n\\section{One}\\label{s}\n\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}\n";
         let src = docs.join("main.tex");
         std::fs::write(&src, text).unwrap();
-        compile(&Compiler::default(), &src, text, &out, &base.join("tectonic"), None).unwrap();
+        compile(&Compiler::default(), &src, text, &out, &base.join("tectonic"), None, false).unwrap();
         let log = std::fs::read_to_string(out.join("main.log")).unwrap();
         assert!(out.join("main.bbl").is_file(), "BibTeX ran");
         assert!(!log.contains("undefined"), "citations and references resolved:\n{log}");
         // A `.bcf` left by an earlier biblatex/Biber compile does not ask for Biber now.
         std::fs::write(out.join("main.bcf"), "<bcf/>").unwrap();
-        compile(&Compiler::default(), &src, text, &out, &base.join("tectonic"), None).unwrap();
+        compile(&Compiler::default(), &src, text, &out, &base.join("tectonic"), None, false).unwrap();
         // A style BibTeX cannot find is its error, not a PDF without the bibliography.
         let broken = text.replace("{plain}", "{nosuchstyle}");
-        let err = compile(&Compiler::default(), &src, &broken, &out, &base.join("tectonic"), None).unwrap_err();
+        let err = compile(&Compiler::default(), &src, &broken, &out, &base.join("tectonic"), None, false).unwrap_err();
         assert!(err.contains("bibtex stopped") && err.contains("nosuchstyle"), "{err}");
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -743,8 +754,28 @@ mod tests {
         let text = "\\documentclass{article}\n\\begin{document}\n\\cite{x}\n\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}\n";
         let src = base.join("main.tex");
         std::fs::write(&src, text).unwrap();
-        let err = compile(&Compiler::default(), &src, text, &base.join("out"), &base.join("tectonic"), None).unwrap_err();
+        let err = compile(&Compiler::default(), &src, text, &base.join("out"), &base.join("tectonic"), None, false).unwrap_err();
         assert!(err.contains("needs `bibtex`, and it was not found"), "{err}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn lualatex_waits_to_be_allowed() {
+        if !system_tex(Program::Lua) {
+            return;
+        }
+        let base = std::env::temp_dir().join(format!("prisme-tex-lua-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let text = "% !TEX program = lualatex\n\\documentclass{article}\n\\begin{document}\nx\n\\end{document}\n";
+        let src = base.join("main.tex");
+        std::fs::write(&src, text).unwrap();
+        let (out, cache) = (base.join("out"), base.join("tectonic"));
+        assert_eq!(compile(&Compiler::default(), &src, text, &out, &cache, None, false).unwrap_err(), ASK_LUALATEX);
+        assert!(!out.exists(), "nothing ran");
+        // pdfLaTeX documents are not asked about.
+        let plain = text.replace("% !TEX program = lualatex\n", "");
+        assert_ne!(compile(&Compiler::default(), &src, &plain, &out, &cache, None, false).err().as_deref(), Some(ASK_LUALATEX));
         let _ = std::fs::remove_dir_all(&base);
     }
 

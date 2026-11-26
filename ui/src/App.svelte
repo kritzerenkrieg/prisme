@@ -1453,7 +1453,7 @@
             {#if asPdf(activeFile)}
               <div class="preview-pane">
                 {#key activeFile}
-                  <TexPdf bind:this={texView} path={activeFile} version={(versions[activeFile] ?? 0) + (texDeps[activeFile] ?? 0)} text={dirty[activeFile] ? (preview[activeFile] ?? null) : null} />
+                  <TexPdf bind:this={texView} path={activeFile} version={(versions[activeFile] ?? 0) + (texDeps[activeFile] ?? 0)} text={dirty[activeFile] ? (preview[activeFile] ?? null) : null} lualatex={!!session.lualatex} onallowlualatex={() => (session.lualatex = true)} />
                 {/key}
               </div>
             {:else if hasPreview(activeFile)}
@@ -1485,7 +1485,7 @@
           <!-- An editor-only file on its way into the editor. -->
         {:else if activeFile && asPdf(activeFile)}
           {#key activeFile}
-            <TexPdf bind:this={texView} path={activeFile} version={(versions[activeFile] ?? 0) + (texDeps[activeFile] ?? 0)} text={dirty[activeFile] ? (preview[activeFile] ?? null) : null} />
+            <TexPdf bind:this={texView} path={activeFile} version={(versions[activeFile] ?? 0) + (texDeps[activeFile] ?? 0)} text={dirty[activeFile] ? (preview[activeFile] ?? null) : null} lualatex={!!session.lualatex} onallowlualatex={() => (session.lualatex = true)} />
           {/key}
         {:else if activeFile}
           <!-- An error while drawing one file must not leave the pane dead for the next: keyed by file, so changing document starts clean. -->
