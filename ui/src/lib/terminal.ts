@@ -99,7 +99,10 @@ export class Session {
     } catch {
       // No WebGL: xterm's DOM renderer stays.
     }
-    this.fit.fit()
+    // A size set before it opened applies now, while it is visible; a hidden
+    // one keeps it for its next resize.
+    if (this.term.element?.offsetParent) this.resize()
+    else this.fit.fit()
     const output = new Channel<ArrayBuffer | number[]>()
     output.onmessage = (data) => {
       const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data)

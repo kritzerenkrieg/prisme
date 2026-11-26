@@ -336,7 +336,7 @@ impl Bib {
 fn bibliography(out: &Path, stem: &str, src_dir: &Path) -> Result<Option<(Bib, Command)>, String> {
     let bib = if out.join(format!("{stem}.bcf")).is_file() {
         Bib::Biber
-    } else if std::fs::read_to_string(out.join(format!("{stem}.aux"))).is_ok_and(|aux| aux.contains("\\bibdata")) {
+    } else if aux_has_bibdata(out, &format!("{stem}.aux"), &mut Vec::new()) {
         Bib::BibTeX
     } else {
         return Ok(None);
@@ -348,6 +348,22 @@ fn bibliography(out: &Path, stem: &str, src_dir: &Path) -> Result<Option<(Bib, C
     c.arg(stem);
     in_folder(&mut c, out, src_dir);
     Ok(Some((bib, c)))
+}
+
+/// The `.aux` `name` in `out`, or one it `\@input`s (what `\include`
+/// writes, so a `\bibliography` in an included file lands there), asks
+/// BibTeX for a bibliography. BibTeX itself follows them from the root.
+fn aux_has_bibdata(out: &Path, name: &str, seen: &mut Vec<String>) -> bool {
+    let inside = Path::new(name).components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir));
+    if !inside || seen.iter().any(|s| s == name) || seen.len() > 200 {
+        return false;
+    }
+    seen.push(name.to_string());
+    let Ok(aux) = std::fs::read_to_string(out.join(name)) else {
+        return false;
+    };
+    aux.contains("\\bibdata")
+        || aux.lines().filter_map(|l| l.trim().strip_prefix("\\@input{")?.strip_suffix('}')).any(|inc| aux_has_bibdata(out, inc, seen))
 }
 
 /// What a bibliography program that failed said: the error lines of its
@@ -698,6 +714,21 @@ mod tests {
     }
 
     #[test]
+    fn bibliography_in_an_included_file() {
+        let out = std::env::temp_dir().join(format!("prisme-tex-aux-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&out);
+        std::fs::create_dir_all(out.join("ch")).unwrap();
+        std::fs::write(out.join("main.aux"), "\\relax\n\\@input{intro.aux}\n\\@input{ch/refs.aux}\n").unwrap();
+        std::fs::write(out.join("intro.aux"), "\\relax\n\\@input{main.aux}\n").unwrap();
+        assert!(!aux_has_bibdata(&out, "main.aux", &mut Vec::new()), "no bibliography, and the cycle ends");
+        std::fs::write(out.join("ch/refs.aux"), "\\relax\n\\bibstyle{plain}\n\\bibdata{refs}\n").unwrap();
+        assert!(aux_has_bibdata(&out, "main.aux", &mut Vec::new()));
+        std::fs::write(out.join("direct.aux"), "\\bibdata{refs}\n").unwrap();
+        assert!(aux_has_bibdata(&out, "direct.aux", &mut Vec::new()));
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    #[test]
     fn bibliography_failures_and_their_errors() {
         #[cfg(unix)]
         {
@@ -739,6 +770,13 @@ mod tests {
         let broken = text.replace("{plain}", "{nosuchstyle}");
         let err = compile(&Compiler::default(), &src, &broken, &out, &base.join("tectonic"), None, false).unwrap_err();
         assert!(err.contains("bibtex stopped") && err.contains("nosuchstyle"), "{err}");
+        // A bibliography in an `\include`d file (its `\bibdata` is in that file's `.aux`).
+        std::fs::write(docs.join("biblio.tex"), "\\bibliographystyle{plain}\n\\bibliography{refs}\n").unwrap();
+        let included = "\\documentclass{article}\n\\begin{document}\nSee \\cite{knuth}.\n\\include{biblio}\n\\end{document}\n";
+        let _ = std::fs::remove_dir_all(&out);
+        compile(&Compiler::default(), &src, included, &out, &base.join("tectonic"), None, false).unwrap();
+        assert!(out.join("main.bbl").is_file(), "BibTeX ran for the included bibliography");
+        assert!(!std::fs::read_to_string(out.join("main.log")).unwrap().contains("undefined"));
         let _ = std::fs::remove_dir_all(&base);
     }
 
