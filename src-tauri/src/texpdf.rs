@@ -1,7 +1,9 @@
 //! `.tex` files compiled to PDF (C4) by the TeX the system has: `latexmk`,
-//! else Tectonic, else `pdflatex` (or `xelatex` / `lualatex` when the file
-//! asks for it). Without any of those it uses the Tectonic that ships
-//! beside prisme (`prisme-tectonic`). Its cache, in prisme's, starts as a
+//! else `pdflatex` (or `xelatex` / `lualatex` when the file asks for it).
+//! Without either it uses the Tectonic that ships beside prisme
+//! (`prisme-tectonic`), built with a patch that keeps a document's files
+//! inside its output folder; a system Tectonic, which has no such limit,
+//! only when that one is missing. Its cache, in prisme's, starts as a
 //! copy of the one that ships with prisme (the common packages and its
 //! format file, so most documents compile offline from the start); a
 //! package beyond those is downloaded when first needed. The source (the file, or the
@@ -72,9 +74,10 @@ fn seed_cache(seed: &Path, cache: &Path) -> std::io::Result<()> {
     std::fs::write(cache.join(SEEDED), std::fs::read(seed.join(SEED_STAMP)).unwrap_or_default())
 }
 
-/// Whether the system has a TeX that compiles `program`'s documents.
+/// Whether the system has a TeX that compiles `program`'s documents and
+/// keeps them inside their output folder (`openout_any=p`): not Tectonic.
 fn system_tex(program: Program) -> bool {
-    find("latexmk").is_some() || find("tectonic").is_some() || find(program.binary()).is_some()
+    find("latexmk").is_some() || find(program.binary()).is_some()
 }
 
 /// Whether a compile now would be the bundled Tectonic's first with nothing
@@ -250,8 +253,6 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_c
             .args(interaction)
             .arg(format!("-outdir={}", out.display()));
         c
-    } else if let Some(tectonic) = find("tectonic") {
-        tectonic_command(&tectonic, out, src_dir)
     } else if let Some(tex) = find(program.binary()) {
         let mut c = program_command(&tex);
         c.arg("-no-shell-escape").args(interaction).arg(format!("-output-directory={}", out.display()));
@@ -264,9 +265,13 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_c
         let mut c = tectonic_command(&tectonic, out, src_dir);
         c.env("TECTONIC_CACHE_DIR", tectonic_cache);
         c
+    } else if let Some(tectonic) = find("tectonic") {
+        // Only a build without the bundled one gets here: this Tectonic
+        // writes `\openout` files wherever a document names them.
+        tectonic_command(&tectonic, out, src_dir)
     } else {
         return Err(format!(
-            "No TeX found to compile with: prisme uses latexmk, Tectonic or {}, else the Tectonic it ships with, which is missing from this build. Install TeX Live (or MiKTeX, MacTeX), or Tectonic.",
+            "No TeX found to compile with: prisme uses latexmk or {}, else the Tectonic it ships with, which is missing from this build. Install TeX Live (or MiKTeX, MacTeX).",
             program.binary()
         ));
     };
