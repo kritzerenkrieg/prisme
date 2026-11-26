@@ -388,8 +388,11 @@ pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path, tectonic
     std::fs::write(&file, text).map_err(|e| e.to_string())?;
     let pdf = out.join(format!("{stem}.pdf"));
     let log = out.join(format!("{stem}.log"));
-    // A PDF left by an earlier compile must not pass for this one's.
+    // A PDF left by an earlier compile must not pass for this one's, nor a
+    // `.bcf` (biblatex's request for Biber) for a document now on BibTeX:
+    // the first run writes a new one if it still uses Biber.
     let _ = std::fs::remove_file(&pdf);
+    let _ = std::fs::remove_file(out.join(format!("{stem}.bcf")));
     for dir in include_dirs(text) {
         let _ = std::fs::create_dir_all(out.join(dir));
     }
@@ -720,6 +723,9 @@ mod tests {
         let log = std::fs::read_to_string(out.join("main.log")).unwrap();
         assert!(out.join("main.bbl").is_file(), "BibTeX ran");
         assert!(!log.contains("undefined"), "citations and references resolved:\n{log}");
+        // A `.bcf` left by an earlier biblatex/Biber compile does not ask for Biber now.
+        std::fs::write(out.join("main.bcf"), "<bcf/>").unwrap();
+        compile(&Compiler::default(), &src, text, &out, &base.join("tectonic"), None).unwrap();
         // A style BibTeX cannot find is its error, not a PDF without the bibliography.
         let broken = text.replace("{plain}", "{nosuchstyle}");
         let err = compile(&Compiler::default(), &src, &broken, &out, &base.join("tectonic"), None).unwrap_err();

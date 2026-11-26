@@ -345,9 +345,15 @@ const SESSIONS: &str = "sessions.json";
 
 /// Fill in what `into` (prisme's saved state) lacks from `from` (maido's):
 /// each workspace's session, and each setting, that only maido has. Where
-/// both have one, prisme's stays. Nothing to do when either is missing.
+/// both have one, prisme's stays. Nothing to do when either is missing; any
+/// other error is one, so the takeover is tried again.
 fn merge_sessions(from: &Path, into: &Path) -> std::io::Result<()> {
-    let (Ok(old), Ok(new)) = (std::fs::read(from), std::fs::read(into)) else {
+    let read = |p: &Path| match std::fs::read(p) {
+        Ok(b) => Ok(Some(b)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    };
+    let (Some(old), Some(new)) = (read(from)?, read(into)?) else {
         return Ok(());
     };
     let parse = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).map_err(std::io::Error::other);
@@ -468,6 +474,15 @@ mod tests {
         assert_eq!(merged, serde_json::json!({"": {"theme": "light", "fontSize": 18}, "/docs": {"tabs": ["a.md"]}}), "maido's fill the gaps, prisme's stay");
         assert_eq!(std::fs::read_to_string(new.join("mermaid/a.svg")).unwrap(), "svg");
         assert!(!take_over_maido(&new), "done once");
+
+        // maido's file there but unreadable (a folder by that name here): an
+        // error, so the takeover is not marked done.
+        let (old2, new2) = (base.join("x").join(MAIDO_IDENTIFIER), base.join("x").join("dev.prisme.editor"));
+        std::fs::create_dir_all(old2.join("sessions.json")).unwrap();
+        std::fs::create_dir_all(&new2).unwrap();
+        std::fs::write(new2.join("sessions.json"), "{}").unwrap();
+        assert!(merge_sessions(&old2.join("sessions.json"), &new2.join("sessions.json")).is_err());
+        assert!(merge_sessions(&base.join("none.json"), &new2.join("sessions.json")).is_ok(), "a missing file is nothing to do");
         let _ = std::fs::remove_dir_all(&base);
     }
 
