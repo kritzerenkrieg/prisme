@@ -1,6 +1,6 @@
 [package]
 name = "prisme"
-version = "0.4.0"
+version = "0.5.0"
 description = "Markdown and Mermaid reader with a shell beside the docs"
 edition.workspace = true
 license.workspace = true
