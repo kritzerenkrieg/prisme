@@ -57,6 +57,9 @@ jobs:
         working-directory: tectonic
         run: |
           cargo install cross --locked
+          # Tectonic's images start as root and drop to the runner's user, as its own CI runs them.
+          export CROSS_ROOTLESS_CONTAINER_ENGINE=1
+          export DOCKER_OPTS="--privileged -e HOST_UID=$(id -u) -e HOST_GID=$(id -g)"
           cross build --release --target ${{ matrix.target }}
 
       - name: vcpkg tools
