@@ -14,6 +14,10 @@ export interface SessionOptions {
   scrollback: number
   /** Draw with WebGL; false keeps xterm.js's DOM renderer. */
   gpu: boolean
+  /** Text size in px. */
+  fontSize: number
+  /** Ctrl+= / Ctrl+- / Ctrl+0: a size step (0 is back to normal). */
+  onzoom: (step: number) => void
   /** Ctrl+click on a workspace path in the output (D2). */
   onpath: (target: LinkTarget) => void
   onurl: (url: string) => void
@@ -26,6 +30,7 @@ const URL_RE = /https?:\/\/[^\s"'`<>]+/g
 // optionally followed by :line or :line:col.
 const PATH_RE = /[^\s"'`<>()[\]{}|;,]*[\w~][^\s"'`<>()[\]{}|;,]*/g
 const MAX_CHECKS_PER_ROW = 16
+const ZOOM_KEYS: Record<string, number> = { Equal: 1, NumpadAdd: 1, Minus: -1, NumpadSubtract: -1, Digit0: 0, Numpad0: 0 }
 
 function colors(): Record<string, string> {
   const css = getComputedStyle(document.documentElement)
@@ -43,7 +48,7 @@ export class Session {
     this.term = new Terminal({
       scrollback: opts.scrollback,
       fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace",
-      fontSize: 13,
+      fontSize: opts.fontSize,
       theme: colors(),
       allowProposedApi: false,
       // Hyperlinks a program writes itself (OSC 8, as Claude Code does): xterm's
@@ -60,6 +65,14 @@ export class Session {
     // through Rust, as the Edit menu's does (WebKitGTK lets a page read it
     // only sometimes).
     this.term.attachCustomKeyEventHandler((e) => {
+      // Ctrl+= / Ctrl+- / Ctrl+0 size the text, as in other terminals (the
+      // shell never sees them).
+      const step = !e.ctrlKey || e.altKey || e.metaKey ? null : ZOOM_KEYS[e.code]
+      if (step != null) {
+        e.preventDefault()
+        if (e.type === 'keydown') opts.onzoom(step)
+        return false
+      }
       if (!e.ctrlKey || !e.shiftKey || e.altKey || (e.code !== 'KeyC' && e.code !== 'KeyV')) return true
       e.preventDefault()
       if (e.type !== 'keydown' || e.repeat) return false
@@ -105,6 +118,13 @@ export class Session {
 
   resize(): void {
     if (this.term.element?.offsetParent) this.fit.fit()
+  }
+
+  /** Draw the text at `px` and fit the rows and columns to it. */
+  setFontSize(px: number): void {
+    if (this.term.options.fontSize === px) return
+    this.term.options.fontSize = px
+    this.resize()
   }
 
   setScrollback(lines: number): void {

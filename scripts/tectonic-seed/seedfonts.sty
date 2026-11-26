@@ -1,0 +1,15 @@
+% Shared by fonts.tex and fonts-lm.tex.
+\ProvidesPackage{seedfonts}
+\RequirePackage[OT1,T1]{fontenc}
+\RequirePackage{amsmath,amssymb,bm}
+\newcommand\sample{%
+  \textrm{Ag \textit{Ag} \textsl{Ag} \textsc{Ag} \textbf{Ag \textit{Ag} \textsl{Ag} \textsc{Ag}}}
+  \textsf{Ag \textit{Ag} \textsl{Ag} \textbf{Ag \textit{Ag}}}
+  \texttt{Ag \textit{Ag} \textsl{Ag} \textsc{Ag} \textbf{Ag}}
+  $x^{y^z}_{a_b} \sum \int \mathbb{R} \mathcal{C} \mathfrak{g} \leqslant \bm{x} \boldsymbol{\alpha}$
+  {\boldmath $x^{y^z} \sum \alpha$}\par}
+\newcommand\allfonts[1]{\fontencoding{#1}\selectfont
+  {\tiny\sample}{\scriptsize\sample}{\footnotesize\sample}{\small\sample}{\normalsize\sample}
+  {\large\sample}{\Large\sample}{\LARGE\sample}{\huge\sample}{\Huge\sample}
+  \fontsize{10.95}{13}\selectfont\sample \fontsize{12}{14}\selectfont\sample
+  \fontsize{9}{11}\selectfont\sample \fontsize{8}{10}\selectfont\sample \fontsize{6}{7}\selectfont\sample}

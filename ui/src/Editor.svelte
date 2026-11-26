@@ -3,14 +3,18 @@
   // lives in the buffer, so switching tabs and back loses nothing.
   import { onDestroy, onMount } from 'svelte'
   import type { Buffer } from './lib/buffers'
+  import { onPinch } from './lib/api'
   import { EditorView, openSearchPanel, redo, undo } from './lib/editor'
 
   interface Props {
     buffer: Buffer
     /** Source line at the top of the view, with a fraction for the way into it. */
     onscrollline: (line: number) => void
+    /** The text size (`--doc-scale`), and a touchpad pinch asking for another. */
+    scale?: number
+    onzoom?: (scale: number) => void
   }
-  let { buffer, onscrollline }: Props = $props()
+  let { buffer, onscrollline, scale = 1, onzoom }: Props = $props()
 
   let host = $state<HTMLElement>()
   let view: EditorView | undefined
@@ -21,6 +25,27 @@
     view.scrollDOM.addEventListener('scroll', onscroll)
     if (buffer.scroll) requestAnimationFrame(() => scrollToLine(buffer.scroll))
     view.focus()
+  })
+
+  // A touchpad pinch (sent here by App.svelte) sizes the text; the line at
+  // the top stays there.
+  $effect(() => {
+    const el = host
+    if (!el || !onzoom) return
+    return onPinch(el, () => scale, (next) => {
+      const keep = topLine()
+      onzoom(next)
+      requestAnimationFrame(() => {
+        view?.requestMeasure()
+        scrollToLine(keep)
+      })
+    })
+  })
+
+  // The text size changed (Ctrl+=, a pinch, Settings): CodeMirror measures its lines again.
+  $effect(() => {
+    void scale
+    view?.requestMeasure()
   })
 
   onDestroy(() => {

@@ -24,6 +24,8 @@
   /** Counts PDFs received: PdfPage loads each one. */
   let compiled = $state(0)
   let compiling = $state(false)
+  /** The bundled Tectonic is downloading its packages: the first compile takes minutes. */
+  let firstRun = $state(false)
   let error = $state('')
   let showLog = $state(true)
   let pdfPage = $state<ReturnType<typeof PdfPage>>()
@@ -54,6 +56,7 @@
     }
     running = true
     compiling = true
+    api.latexFirstRun().then((first) => (firstRun = first && compiling), () => {})
     try {
       const pdf = await api.compileLatex(path, text)
       if (gone) return
@@ -67,6 +70,7 @@
     } finally {
       running = false
       compiling = again
+      firstRun = firstRun && again
       if (again && !gone) {
         again = false
         void compile()
@@ -104,6 +108,9 @@
       <PdfPage bind:this={pdfPage} {path} version={compiled} {load} />
     {:else if compiling}
       <p class="doc-note">Compiling {path.slice(path.lastIndexOf('/') + 1)}…</p>
+      {#if firstRun}
+        <p class="doc-note">The first compile downloads the TeX packages it needs, which can take a few minutes. Later ones are quick and offline.</p>
+      {/if}
     {/if}
     {#if compiling && compiled}
       <span class="tex-busy">Compiling…</span>

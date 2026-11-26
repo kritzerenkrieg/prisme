@@ -1,7 +1,11 @@
 //! `.tex` files compiled to PDF (C4) by the TeX the system has: `latexmk`,
 //! else Tectonic, else `pdflatex` (or `xelatex` / `lualatex` when the file
-//! asks for it). prisme ships no TeX of its own. The source (the file, or the
-//! editor's unsaved text) is written into a folder of maido's cache, one per
+//! asks for it). Without any of those it uses the Tectonic that ships
+//! beside prisme (`prisme-tectonic`). Its cache, in prisme's, starts as a
+//! copy of the one that ships with prisme (the common packages and its
+//! format file, so most documents compile offline from the start); a
+//! package beyond those is downloaded when first needed. The source (the file, or the
+//! editor's unsaved text) is written into a folder of prisme's cache, one per
 //! file, and compiled there; the file's own folder is on TeX's search path,
 //! so `\input`, `\include`, pictures and bibliographies beside it are found.
 //! Nothing is written into the workspace. Shell escape is off and
@@ -17,19 +21,67 @@ use std::time::{Duration, Instant};
 
 /// A compile running longer than this is stopped.
 const TIMEOUT: Duration = Duration::from_secs(120);
+/// The bundled Tectonic's first compile downloads its packages and builds
+/// its format file: it gets longer, until that format exists.
+const FIRST_TIMEOUT: Duration = Duration::from_secs(600);
+/// The name the bundled Tectonic is installed under, beside prisme's own
+/// program (not `tectonic`, so it never clashes with a system package).
+const BUNDLED: &str = "prisme-tectonic";
 /// At most this many lines of the log come back with an error.
 const ERROR_LINES: usize = 24;
 /// Of what TeX prints, only this much of the end is kept (for an error with no log).
 const OUTPUT_TAIL: usize = 64 * 1024;
 
-/// One compile at a time per file: TeX's auxiliary files are shared.
+/// One compile at a time per file: TeX's auxiliary files are shared. And
+/// one first compile of the bundled Tectonic at a time: the files it
+/// downloads are the same for every document, so a second one waits for
+/// them instead of fetching them again beside it.
 #[derive(Default)]
-pub struct Compiler(Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>);
+pub struct Compiler {
+    files: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
+    first: Mutex<()>,
+}
 
 impl Compiler {
     fn lock(&self, dir: &Path) -> Arc<Mutex<()>> {
-        self.0.lock().unwrap().entry(dir.to_path_buf()).or_default().clone()
+        self.files.lock().unwrap().entry(dir.to_path_buf()).or_default().clone()
     }
+}
+
+/// Whether the bundled Tectonic has built its format file in `cache`: until
+/// then, a compile downloads packages first.
+fn has_format(cache: &Path) -> bool {
+    std::fs::read_dir(cache.join("formats")).is_ok_and(|mut d| d.next().is_some())
+}
+
+/// Whether the system has a TeX that compiles `program`'s documents.
+fn system_tex(program: Program) -> bool {
+    find("latexmk").is_some() || find("tectonic").is_some() || find(program.binary()).is_some()
+}
+
+/// Whether a compile now would be the bundled Tectonic's first with nothing
+/// to start from: no TeX of the system, no format yet in `tectonic_cache`,
+/// and no shipped cache (`seed`) to copy one from.
+pub fn first_run(tectonic_cache: &Path, seed: Option<&Path>) -> bool {
+    !system_tex(Program::Pdf) && bundled().is_some() && !has_format(tectonic_cache) && !seed.is_some_and(has_format)
+}
+
+/// Copy what `from` holds into `to`, keeping the files `to` already has.
+fn copy_missing(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_missing(&entry.path(), &target)?;
+        } else if !target.exists() {
+            // Through a temporary name, so a copy cut short never passes for a whole file.
+            let part = to.join(format!(".{}.part", entry.file_name().to_string_lossy()));
+            std::fs::copy(entry.path(), &part)?;
+            std::fs::rename(&part, &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// The TeX engine a document asks for.
@@ -95,6 +147,20 @@ fn find(name: &str) -> Option<PathBuf> {
         }
     }
     dirs.into_iter().map(|d| d.join(&exe)).find(|p| p.is_file())
+}
+
+/// The Tectonic that ships beside prisme's program, if it is there.
+fn bundled() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { format!("{BUNDLED}.exe") } else { BUNDLED.to_string() };
+    let path = std::env::current_exe().ok()?.parent()?.join(exe);
+    path.is_file().then_some(path)
+}
+
+/// Tectonic's arguments: output folder, logs kept, the source's folder searched.
+fn tectonic_command(exe: &Path, out: &Path, src_dir: &Path) -> Command {
+    let mut c = program_command(exe);
+    c.args(["--chatter", "minimal", "--keep-logs", "--outdir"]).arg(out).arg("-Z").arg(format!("search-path={}", src_dir.display()));
+    c
 }
 
 /// `dir` ahead of what `var` already holds; the empty entry at the end keeps TeX's defaults.
@@ -165,8 +231,11 @@ fn kill_all(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
-/// The command that compiles `file` (in `out`, its own folder) for a source in `src_dir`.
-fn command(file: &Path, out: &Path, src_dir: &Path, program: Program) -> Result<Command, String> {
+/// The command that compiles `file` (in `out`, its own folder) for a source
+/// in `src_dir`, and how long it may run. `tectonic_cache` is where the
+/// bundled Tectonic keeps its packages.
+fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_cache: &Path) -> Result<(Command, Duration), String> {
+    let mut timeout = TIMEOUT;
     let interaction = ["-interaction=nonstopmode", "-halt-on-error", "-file-line-error"];
     let mut cmd = if let Some(latexmk) = find("latexmk") {
         let mut c = program_command(&latexmk);
@@ -182,16 +251,22 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program) -> Result<
             .arg(format!("-outdir={}", out.display()));
         c
     } else if let Some(tectonic) = find("tectonic") {
-        let mut c = program_command(&tectonic);
-        c.args(["--chatter", "minimal", "--keep-logs", "--outdir"]).arg(out).arg("-Z").arg(format!("search-path={}", src_dir.display()));
-        c
+        tectonic_command(&tectonic, out, src_dir)
     } else if let Some(tex) = find(program.binary()) {
         let mut c = program_command(&tex);
         c.arg("-no-shell-escape").args(interaction).arg(format!("-output-directory={}", out.display()));
         c
+    } else if let Some(tectonic) = bundled() {
+        // Its format file is built once, after the first packages arrive.
+        if !has_format(tectonic_cache) {
+            timeout = FIRST_TIMEOUT;
+        }
+        let mut c = tectonic_command(&tectonic, out, src_dir);
+        c.env("TECTONIC_CACHE_DIR", tectonic_cache);
+        c
     } else {
         return Err(format!(
-            "No TeX found to compile with: prisme uses latexmk, Tectonic or {}. Install TeX Live (or MiKTeX, MacTeX), or Tectonic.",
+            "No TeX found to compile with: prisme uses latexmk, Tectonic or {}, else the Tectonic it ships with, which is missing from this build. Install TeX Live (or MiKTeX, MacTeX), or Tectonic.",
             program.binary()
         ));
     };
@@ -205,12 +280,14 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program) -> Result<
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    Ok(cmd)
+    Ok((cmd, timeout))
 }
 
 /// Compile `text` (the source of `src`, a `.tex` file) in `out`; the PDF's bytes,
-/// or the errors from TeX's log.
-pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path) -> Result<Vec<u8>, String> {
+/// or the errors from TeX's log. `tectonic_cache` is where the bundled
+/// Tectonic keeps its packages, and `seed` the cache that ships with prisme,
+/// copied into it before its first compile.
+pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path, tectonic_cache: &Path, seed: Option<&Path>) -> Result<Vec<u8>, String> {
     let lock = compiler.lock(out);
     let _one = lock.lock().unwrap();
     std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
@@ -226,7 +303,24 @@ pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path) -> Resul
     }
 
     let src_dir = src.parent().unwrap_or(Path::new("."));
-    let (status, output) = run(command(&file, out, src_dir, program(text))?, TIMEOUT)?;
+    if let Some(seed) = seed
+        && !has_format(tectonic_cache)
+        && has_format(seed)
+        && !system_tex(program(text))
+        && bundled().is_some()
+    {
+        let _first = compiler.first.lock().unwrap();
+        if !has_format(tectonic_cache) {
+            copy_missing(seed, tectonic_cache).map_err(|e| format!("Could not set up the bundled TeX in {}: {e}", tectonic_cache.display()))?;
+        }
+    }
+    let (mut cmd, mut timeout) = command(&file, out, src_dir, program(text), tectonic_cache)?;
+    let _first = (timeout == FIRST_TIMEOUT).then(|| compiler.first.lock().unwrap());
+    // Another first compile may have built the format while this one waited.
+    if _first.is_some() && has_format(tectonic_cache) {
+        (cmd, timeout) = command(&file, out, src_dir, program(text), tectonic_cache)?;
+    }
+    let (status, output) = run(cmd, timeout)?;
     if status.success()
         && let Ok(bytes) = std::fs::read(&pdf)
     {
@@ -375,7 +469,7 @@ mod tests {
         let text = "\\documentclass{article}\n\\begin{document}\n\\include{chapters/one}\n\\end{document}\n";
         let src = dir.join("src/main.tex");
         std::fs::write(&src, text).unwrap();
-        let pdf = compile(&Compiler::default(), &src, text, &dir.join("out"));
+        let pdf = compile(&Compiler::default(), &src, text, &dir.join("out"), &dir.join("tectonic"), None);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(pdf.unwrap().starts_with(b"%PDF"));
     }
@@ -407,14 +501,35 @@ mod tests {
         std::fs::write(&src, text).unwrap();
         let compiler = Compiler::default();
 
-        let pdf = compile(&compiler, &src, text, &out).unwrap();
+        let pdf = compile(&compiler, &src, text, &out, &base.join("tectonic"), None).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
         let beside: Vec<_> = std::fs::read_dir(&docs).unwrap().map(|e| e.unwrap().file_name()).collect();
         assert_eq!(beside.len(), 2, "{beside:?}");
 
         let broken = text.replace("Hello", "\\nosuchcommand Hello");
-        let err = compile(&compiler, &src, &broken, &out).unwrap_err();
+        let err = compile(&compiler, &src, &broken, &out, &base.join("tectonic"), None).unwrap_err();
         assert!(err.contains("Undefined control sequence"), "{err}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn seed_copy_keeps_what_the_cache_has() {
+        let base = std::env::temp_dir().join(format!("prisme-tex-seed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (seed, cache) = (base.join("seed"), base.join("cache"));
+        std::fs::create_dir_all(seed.join("formats")).unwrap();
+        std::fs::create_dir_all(seed.join("bundles/data")).unwrap();
+        std::fs::write(seed.join("formats/x.fmt"), "fmt").unwrap();
+        std::fs::write(seed.join("bundles/data/a.sty"), "seed").unwrap();
+        std::fs::create_dir_all(cache.join("bundles/data")).unwrap();
+        std::fs::write(cache.join("bundles/data/a.sty"), "newer").unwrap();
+        assert!(has_format(&seed) && !has_format(&cache));
+
+        copy_missing(&seed, &cache).unwrap();
+        assert!(has_format(&cache));
+        assert_eq!(std::fs::read_to_string(cache.join("bundles/data/a.sty")).unwrap(), "newer");
+        let names: Vec<_> = std::fs::read_dir(cache.join("formats")).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, ["x.fmt"]);
         let _ = std::fs::remove_dir_all(&base);
     }
 

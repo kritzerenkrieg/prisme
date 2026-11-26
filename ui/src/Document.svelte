@@ -6,7 +6,7 @@
   import { onDestroy, tick, untrack } from 'svelte'
   import FindBar from './FindBar.svelte'
   import { convertFileSrc } from '@tauri-apps/api/core'
-  import { api, type BlockView, type DocView, type OutlineItem } from './lib/api'
+  import { api, onPinch, type BlockView, type DocView, type OutlineItem } from './lib/api'
   import { closeExportMenu } from './lib/diagram-export'
   import { fragment } from './lib/html'
   import { renderMath } from './lib/math'
@@ -31,8 +31,11 @@
     onsend: (code: string) => void
     /** The editor's unsaved text: show it instead of the file (live preview, B5). */
     source?: string | null
+    /** The text size (`--doc-scale`), and a touchpad pinch asking for another. */
+    scale?: number
+    onzoom?: (scale: number) => void
   }
-  let { path, version, remote, line, anchor, onloaded, onlink, onscrollline, onsend, source = null }: Props = $props()
+  let { path, version, remote, line, anchor, onloaded, onlink, onscrollline, onsend, source = null, scale = 1, onzoom }: Props = $props()
 
   const SHELL_LANGS = ['bash', 'sh', 'shell', 'zsh', 'console', 'fish']
 
@@ -252,6 +255,18 @@
   onDestroy(() => {
     unTheme()
     closeExportMenu()
+  })
+
+  // A touchpad pinch (sent here by App.svelte) sizes the text; the block at
+  // the top stays where it was. PDFs and diagrams take their own pinch.
+  $effect(() => {
+    const el = container
+    if (!el || !onzoom) return
+    return onPinch(el, () => scale, (next) => {
+      const keep = topBlock()
+      onzoom(next)
+      void tick().then(() => keep && restore(keep))
+    })
   })
 
   // Find in the document (Ctrl+F).

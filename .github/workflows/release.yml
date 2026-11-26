@@ -87,6 +87,18 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The Tectonic that ships beside prisme, for machines with no TeX (C4), and its starting
+      # cache, compiled here. A universal macOS build compiles each architecture on its own, so it
+      # needs all three; the universal one first, since it makes the cache and runs on any runner.
+      - name: Bundled Tectonic
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            for t in universal-apple-darwin x86_64-apple-darwin aarch64-apple-darwin; do scripts/fetch-tectonic.sh "$t"; done
+          else
+            scripts/fetch-tectonic.sh
+          fi
+
       - name: Updater configuration
         id: updater
         shell: bash

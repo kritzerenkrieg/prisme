@@ -1,0 +1,49 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern,textcomp,microtype}
+\usepackage[english]{babel}
+\usepackage{csquotes}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{graphicx,float,wrapfig}
+\usepackage{caption,subcaption}
+\usepackage[table]{xcolor}
+\usepackage{booktabs,tabularx,longtable,multirow,array,makecell}
+\usepackage{enumitem,fancyhdr,lastpage,titlesec,setspace,parskip,footmisc}
+\usepackage{listings,verbatim,fancyvrb}
+\usepackage{siunitx,xspace,url,lipsum,ifthen,etoolbox,calc}
+\usepackage{algorithm,algpseudocode}
+\usepackage[numbers]{natbib}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\pagestyle{fancy}
+\fancyhead[R]{Page \thepage\ of \pageref{LastPage}}
+\newtheorem{theorem}{Theorem}
+\lstset{basicstyle=\ttfamily\small,keywordstyle=\bfseries,language=Python}
+\begin{document}
+\title{Seed}\author{prisme}\maketitle
+\tableofcontents
+\section{Text}\label{sec:text}
+\enquote{Quoted}, \textbf{bold}, \emph{emphasis}, \texttt{mono}, \textsc{caps}, \SI{3.2}{\milli\metre}, see \cref{sec:text} and \cite{knuth}.
+\lipsum[1]
+\begin{theorem} $\bm{x}^2 \geq 0$. \end{theorem}
+\begin{proof} Trivial. \end{proof}
+\begin{align} e^{i\pi} + 1 &= 0 \\ \int_0^\infty e^{-x}\,dx &= 1 \end{align}
+\begin{itemize}[noitemsep] \item One \item Two \end{itemize}
+\begin{table}[H]\centering\rowcolors{2}{gray!10}{white}
+\begin{tabularx}{\linewidth}{lX}\toprule \textbf{A} & \textbf{B} \\ \midrule \multirow{2}{*}{x} & y \\ & z \\ \bottomrule\end{tabularx}
+\caption{A table}\end{table}
+\begin{figure}[H]\centering
+\begin{subfigure}{0.4\linewidth}\includegraphics[width=\linewidth]{example-image-a}\caption{A}\end{subfigure}
+\begin{subfigure}{0.4\linewidth}\includegraphics[width=\linewidth]{example-image-b}\caption{B}\end{subfigure}
+\caption{Pictures}\end{figure}
+\begin{lstlisting}
+def f(x):
+    return x * 2
+\end{lstlisting}
+\begin{algorithm}\caption{Loop}\begin{algorithmic}\State $x \gets 0$\While{$x < 3$}\State $x \gets x + 1$\EndWhile\end{algorithmic}\end{algorithm}
+\begin{longtable}{ll}\toprule a & b \\ \bottomrule\end{longtable}
+\bibliographystyle{plainnat}
+\bibliography{seed}
+\end{document}

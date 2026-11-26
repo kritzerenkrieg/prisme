@@ -237,7 +237,16 @@ async fn read_pdf(window: WebviewWindow, windows: State<'_, Windows>, path: Stri
     std::fs::read(&full).map(Response::new).map_err(|e| e.to_string())
 }
 
-/// A `.tex` file compiled to PDF by the system's TeX (C4): the file as saved,
+/// Whether the next LaTeX compile is the bundled Tectonic's first, which
+/// downloads its TeX packages and takes minutes.
+#[tauri::command]
+fn latex_first_run(app: AppHandle) -> Result<bool, String> {
+    let cache = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    let seed = app.path().resource_dir().ok().map(|d| d.join("tectonic-seed"));
+    Ok(texpdf::first_run(&cache.join("tectonic"), seed.as_deref()))
+}
+
+/// A `.tex` file compiled to PDF by the system's TeX, else the bundled Tectonic (C4): the file as saved,
 /// or `text` (the editor's unsaved text). The PDF's bytes, or TeX's errors.
 /// It is compiled in prisme's cache, never in the workspace.
 #[tauri::command]
@@ -255,8 +264,10 @@ async fn compile_latex(app: AppHandle, window: WebviewWindow, windows: State<'_,
         },
     };
     let key = blake3::hash(full.to_string_lossy().as_bytes()).to_hex()[..16].to_string();
-    let out = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("latex").join(key);
-    tauri::async_runtime::spawn_blocking(move || texpdf::compile(&app.state::<Compiler>(), &full, &text, &out))
+    let cache = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    let (out, tectonic) = (cache.join("latex").join(key), cache.join("tectonic"));
+    let seed = app.path().resource_dir().ok().map(|d| d.join("tectonic-seed"));
+    tauri::async_runtime::spawn_blocking(move || texpdf::compile(&app.state::<Compiler>(), &full, &text, &out, &tectonic, seed.as_deref()))
         .await
         .map_err(|e| e.to_string())?
         .map(Response::new)
@@ -856,6 +867,11 @@ pub fn run() {
             if let Some(dir) = &mount {
                 let _ = std::env::set_current_dir(dir);
             }
+            // Saved state from before the rename (maido 0.4) comes along,
+            // before anything reads or writes the new folders.
+            for dir in [app.path().app_data_dir(), app.path().app_cache_dir()].into_iter().flatten() {
+                workspace::take_over_maido(&dir);
+            }
             let data = app.path().app_data_dir()?;
             app.manage(Sessions::new(data.join("sessions.json")));
             open_from_args(app.handle(), &args, &cwd);
@@ -867,11 +883,6 @@ pub fn run() {
                 if window.label() == mermaid::LABEL {
                     app.state::<Mermaid>().closed();
                     return;
-            // Saved state from before the rename (maido 0.4) comes along,
-            // before anything reads or writes the new folders.
-            for dir in [app.path().app_data_dir(), app.path().app_cache_dir()].into_iter().flatten() {
-                workspace::take_over_maido(&dir);
-            }
                 }
                 app.state::<Terminals>().close_window(window.label());
                 app.state::<Updates>().closed(window.label());
@@ -892,6 +903,7 @@ pub fn run() {
             load_source,
             read_pdf,
             compile_latex,
+            latex_first_run,
             save_file,
             diff_lines,
             diff_rendered,

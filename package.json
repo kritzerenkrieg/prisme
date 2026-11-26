@@ -4,9 +4,10 @@
   "license": "MIT",
   "scripts": {
     "tauri": "tauri",
-    "dev": "tauri dev",
-    "build": "tauri build --no-bundle",
-    "release": "tauri build"
+    "tectonic": "bash scripts/fetch-tectonic.sh",
+    "dev": "bash scripts/fetch-tectonic.sh && tauri dev",
+    "build": "bash scripts/fetch-tectonic.sh && tauri build --no-bundle",
+    "release": "bash scripts/fetch-tectonic.sh && tauri build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.3"

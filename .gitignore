@@ -4,6 +4,7 @@ dist/
 /.claude/
 /test/
 /src-tauri/gen/
+/src-tauri/binaries/
 .env
 env
 .venv

@@ -16,7 +16,7 @@ A path-based Markdown and Mermaid reader and editor (Tauri 2, Svelte 5 + TypeScr
 ## Toolchain and build
 
 - Rust and pnpm are not on the PATH of non-interactive shells: `PATH=$HOME/.cargo/bin:$HOME/.local/share/pnpm/bin:$PATH`.
-- `pnpm install`, then `pnpm build` (release, frontend embedded, no bundle) or `pnpm dev`; `pnpm release` also makes the `.deb`. A plain `cargo build` does not embed the frontend.
+- `pnpm install`, then `pnpm build` (release, frontend embedded, no bundle) or `pnpm dev`; `pnpm release` also makes the `.deb`. A plain `cargo build` does not embed the frontend. All three first fetch the bundled Tectonic into `src-tauri/binaries/` and compile `scripts/tectonic-seed/` with it into the cache that ships (`pnpm tectonic` alone; minutes the first time, as it downloads the packages); a plain `cargo build` or `cargo test` fails until they are there.
 
 ## Memory budget
 
@@ -24,7 +24,7 @@ Measured against a bare Tauri window in the same sitting: idle with one document
 
 ## Saved state
 
-Sessions and settings: `~/.local/share/dev.maido.viewer/sessions.json`. Mermaid SVG cache: `~/.cache/dev.maido.viewer/mermaid/`. Compiled LaTeX (PDF mode): `~/.cache/dev.maido.viewer/latex/`.
+Sessions and settings: `~/.local/share/dev.prisme.editor/sessions.json`. Mermaid SVG cache: `~/.cache/dev.prisme.editor/mermaid/`. Compiled LaTeX: `~/.cache/dev.prisme.editor/latex/`. The bundled Tectonic's packages: `~/.cache/dev.prisme.editor/tectonic/`.
 
 ## Screenshots
 
