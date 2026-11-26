@@ -300,21 +300,73 @@ fn in_folder(cmd: &mut Command, out: &Path, src_dir: &Path) {
         .stderr(Stdio::piped());
 }
 
+/// The bibliography programs a bare engine may need.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Bib {
+    BibTeX,
+    Biber,
+}
+
+impl Bib {
+    fn binary(self) -> &'static str {
+        match self {
+            Bib::BibTeX => "bibtex",
+            Bib::Biber => "biber",
+        }
+    }
+
+    /// Whether it failed: BibTeX exits 1 for warnings alone (a field
+    /// missing), 2 and up for errors; Biber anything but 0 for one.
+    fn failed(self, status: std::process::ExitStatus) -> bool {
+        match (self, status.code()) {
+            (Bib::BibTeX, Some(code)) => code >= 2,
+            _ => !status.success(),
+        }
+    }
+}
+
 /// After a bare engine's first run, the bibliography program the document
-/// needs: Biber when biblatex left a `.bcf`, BibTeX when the `.aux` names
-/// `\bibdata`; none when it has no bibliography, or that program is missing.
-fn bibliography(out: &Path, stem: &str, src_dir: &Path) -> Option<Command> {
-    let program = if out.join(format!("{stem}.bcf")).is_file() {
-        find("biber")?
+/// needs (Biber when biblatex left a `.bcf`, BibTeX when the `.aux` names
+/// `\bibdata`) and its command; none when it has no bibliography, an error
+/// when it needs one and that program is missing.
+fn bibliography(out: &Path, stem: &str, src_dir: &Path) -> Result<Option<(Bib, Command)>, String> {
+    let bib = if out.join(format!("{stem}.bcf")).is_file() {
+        Bib::Biber
     } else if std::fs::read_to_string(out.join(format!("{stem}.aux"))).is_ok_and(|aux| aux.contains("\\bibdata")) {
-        find("bibtex")?
+        Bib::BibTeX
     } else {
-        return None;
+        return Ok(None);
     };
+    let program = find(bib.binary()).ok_or_else(|| {
+        format!("This document has a bibliography, which needs `{}`, and it was not found. Install it with your TeX (TeX Live: `tlmgr install {}`), or install `latexmk`.", bib.binary(), bib.binary())
+    })?;
     let mut c = program_command(&program);
     c.arg(stem);
     in_folder(&mut c, out, src_dir);
-    Some(c)
+    Ok(Some((bib, c)))
+}
+
+/// What a bibliography program that failed said: the error lines of its
+/// `.blg` (BibTeX's `I couldn't open…` and `---line` context, Biber's
+/// `ERROR -`), else the end of what it printed.
+fn bib_errors(blg: &str, output: &str) -> String {
+    let lines: Vec<&str> = blg.lines().collect();
+    let mut kept: Vec<&str> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        if l.starts_with("I couldn't") || l.starts_with("I found no") || l.starts_with("I was expecting") || l.contains("ERROR - ") || l.starts_with("---") {
+            for x in &lines[i.saturating_sub(1)..(i + 2).min(lines.len())] {
+                if !kept.contains(x) {
+                    kept.push(x);
+                }
+            }
+        }
+    }
+    if kept.is_empty() {
+        let tail: Vec<&str> = output.lines().filter(|l| !l.trim().is_empty()).collect();
+        kept = tail[tail.len().saturating_sub(ERROR_LINES)..].to_vec();
+    }
+    kept.truncate(ERROR_LINES);
+    kept.join("\n")
 }
 
 /// Whether LaTeX's log asks for another run: cross-references or citations
@@ -367,9 +419,13 @@ pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path, tectonic
     if bare && status.success() {
         let mut runs = 1;
         let mut again = false;
-        if let Some(bib) = bibliography(out, &stem, src_dir) {
-            // A bibliography that fails leaves its citations unresolved, as `latexmk` would show them.
-            let _ = run(bib, deadline, timeout)?;
+        if let Some((bib, cmd)) = bibliography(out, &stem, src_dir)? {
+            // A bibliography that failed is TeX's error to show, not a PDF with its citations missing.
+            let (bib_status, bib_output) = run(cmd, deadline, timeout)?;
+            if bib.failed(bib_status) {
+                let blg = std::fs::read(out.join(format!("{stem}.blg"))).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+                return Err(format!("{} stopped ({bib_status}):\n{}", bib.binary(), bib_errors(&blg, &bib_output)));
+            }
             again = true;
         }
         while status.success() && runs < MAX_RUNS && (again || std::fs::read_to_string(&log).is_ok_and(|l| wants_rerun(&l))) {
@@ -610,18 +666,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&out);
         std::fs::create_dir_all(&out).unwrap();
         std::fs::write(out.join("a.aux"), "\\relax\n").unwrap();
-        assert!(bibliography(&out, "a", &out).is_none(), "no bibliography asked for");
+        assert!(bibliography(&out, "a", &out).unwrap().is_none(), "no bibliography asked for");
         std::fs::write(out.join("a.aux"), "\\relax\n\\bibstyle{plain}\n\\bibdata{refs}\n").unwrap();
-        if let Some(bibtex) = find("bibtex") {
-            let c = bibliography(&out, "a", &out).expect("BibTeX for \\bibdata");
-            assert_eq!(c.get_program(), bibtex.as_os_str());
-            assert_eq!(c.get_args().collect::<Vec<_>>(), ["a"]);
+        match find("bibtex") {
+            Some(bibtex) => {
+                let (bib, c) = bibliography(&out, "a", &out).unwrap().expect("BibTeX for \\bibdata");
+                assert_eq!(bib, Bib::BibTeX);
+                assert_eq!(c.get_program(), bibtex.as_os_str());
+                assert_eq!(c.get_args().collect::<Vec<_>>(), ["a"]);
+            }
+            None => assert!(bibliography(&out, "a", &out).unwrap_err().contains("`bibtex`"), "a missing BibTeX is an error"),
         }
         std::fs::write(out.join("a.bcf"), "<bcf/>").unwrap();
-        if let Some(biber) = find("biber") {
-            assert_eq!(bibliography(&out, "a", &out).unwrap().get_program(), biber.as_os_str());
+        match find("biber") {
+            Some(biber) => assert_eq!(bibliography(&out, "a", &out).unwrap().unwrap().1.get_program(), biber.as_os_str()),
+            None => assert!(bibliography(&out, "a", &out).unwrap_err().contains("`biber`"), "a missing Biber is an error"),
         }
         let _ = std::fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn bibliography_failures_and_their_errors() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            let code = |c: i32| std::process::ExitStatus::from_raw(c << 8);
+            assert!(!Bib::BibTeX.failed(code(1)), "BibTeX's warnings alone");
+            assert!(Bib::BibTeX.failed(code(2)));
+            assert!(Bib::Biber.failed(code(2)) && !Bib::Biber.failed(code(0)));
+        }
+        let blg = "This is BibTeX\nThe style file: nosuch.bst\nI couldn't open style file nosuch.bst\n---line 1 of file a.aux\n : \\bibstyle{nosuch\nI'm skipping whatever remains\n";
+        let e = bib_errors(blg, "");
+        assert!(e.contains("I couldn't open style file nosuch.bst") && e.contains("---line 1 of file a.aux"), "{e}");
+        assert_eq!(bib_errors("", "one\n\ntwo\n"), "one\ntwo");
     }
 
     /// A bare engine resolves citations and references like `latexmk` does.
@@ -643,6 +720,27 @@ mod tests {
         let log = std::fs::read_to_string(out.join("main.log")).unwrap();
         assert!(out.join("main.bbl").is_file(), "BibTeX ran");
         assert!(!log.contains("undefined"), "citations and references resolved:\n{log}");
+        // A style BibTeX cannot find is its error, not a PDF without the bibliography.
+        let broken = text.replace("{plain}", "{nosuchstyle}");
+        let err = compile(&Compiler::default(), &src, &broken, &out, &base.join("tectonic"), None).unwrap_err();
+        assert!(err.contains("bibtex stopped") && err.contains("nosuchstyle"), "{err}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Without BibTeX, a document with a bibliography says what is missing.
+    /// Ignored by default: it needs `pdflatex` and neither `latexmk` nor `bibtex`.
+    #[test]
+    #[ignore]
+    fn bare_engine_without_bibtex_says_so() {
+        assert!(find("latexmk").is_none() && find("pdflatex").is_some() && find("bibtex").is_none());
+        let base = std::env::temp_dir().join(format!("prisme-tex-nobib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let text = "\\documentclass{article}\n\\begin{document}\n\\cite{x}\n\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}\n";
+        let src = base.join("main.tex");
+        std::fs::write(&src, text).unwrap();
+        let err = compile(&Compiler::default(), &src, text, &base.join("out"), &base.join("tectonic"), None).unwrap_err();
+        assert!(err.contains("needs `bibtex`, and it was not found"), "{err}");
         let _ = std::fs::remove_dir_all(&base);
     }
 

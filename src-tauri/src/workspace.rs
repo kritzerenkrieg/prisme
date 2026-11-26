@@ -323,10 +323,11 @@ const TAKEN_OVER: &str = ".from-maido";
 /// The first start after the rename takes over maido's folder beside `dir`
 /// (sessions and settings, or the Mermaid and LaTeX caches): moved while
 /// prisme has no folder of its own yet, else (the move failed before, and
-/// prisme has written its own since) the files prisme lacks are copied, so
-/// nothing is overwritten. Done once: a mark in `dir` says so, written only
-/// when it all went through, so a failed takeover is tried again on the
-/// next start. True when it happened now.
+/// prisme has written its own since) the files prisme lacks are copied, and
+/// maido's saved sessions and settings fill in what prisme's `sessions.json`
+/// lacks, so nothing of prisme's is overwritten. Done once: a mark in `dir`
+/// says so, written only when it all went through, so a failed takeover is
+/// tried again on the next start. True when it happened now.
 pub fn take_over_maido(dir: &Path) -> bool {
     let Some(old) = dir.parent().map(|p| p.join(MAIDO_IDENTIFIER)) else {
         return false;
@@ -335,7 +336,40 @@ pub fn take_over_maido(dir: &Path) -> bool {
         return false;
     }
     let moved = !dir.exists() && std::fs::rename(&old, dir).is_ok();
-    (moved || copy_missing(&old, dir).is_ok()) && std::fs::write(dir.join(TAKEN_OVER), "").is_ok()
+    (moved || (copy_missing(&old, dir).is_ok() && merge_sessions(&old.join(SESSIONS), &dir.join(SESSIONS)).is_ok()))
+        && std::fs::write(dir.join(TAKEN_OVER), "").is_ok()
+}
+
+/// The saved sessions and settings, in the app's data folder.
+const SESSIONS: &str = "sessions.json";
+
+/// Fill in what `into` (prisme's saved state) lacks from `from` (maido's):
+/// each workspace's session, and each setting, that only maido has. Where
+/// both have one, prisme's stays. Nothing to do when either is missing.
+fn merge_sessions(from: &Path, into: &Path) -> std::io::Result<()> {
+    let (Ok(old), Ok(new)) = (std::fs::read(from), std::fs::read(into)) else {
+        return Ok(());
+    };
+    let parse = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).map_err(std::io::Error::other);
+    let (old, mut merged) = (parse(&old)?, parse(&new)?);
+    fill_missing(&mut merged, old);
+    let part = into.with_extension("json.part");
+    std::fs::write(&part, serde_json::to_vec(&merged).map_err(std::io::Error::other)?)?;
+    std::fs::rename(part, into)
+}
+
+/// Add `from`'s keys that `into` lacks, object by object; `into` wins.
+fn fill_missing(into: &mut serde_json::Value, from: serde_json::Value) {
+    if let (serde_json::Value::Object(into), serde_json::Value::Object(from)) = (into, from) {
+        for (k, v) in from {
+            match into.get_mut(&k) {
+                Some(have) => fill_missing(have, v),
+                None => {
+                    into.insert(k, v);
+                }
+            }
+        }
+    }
 }
 
 /// Copy what `from` holds into `to`, keeping the files `to` already has.
@@ -422,13 +456,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
         let (old, new) = (base.join(MAIDO_IDENTIFIER), base.join("dev.prisme.editor"));
         std::fs::create_dir_all(old.join("mermaid")).unwrap();
-        std::fs::write(old.join("sessions.json"), "maido").unwrap();
+        // maido's settings and a workspace prisme has not opened; prisme saved
+        // its own settings before the takeover went through.
+        std::fs::write(old.join("sessions.json"), r#"{"":{"theme":"dark","fontSize":18},"/docs":{"tabs":["a.md"]}}"#).unwrap();
         std::fs::write(old.join("mermaid/a.svg"), "svg").unwrap();
         std::fs::create_dir_all(&new).unwrap();
-        std::fs::write(new.join("sessions.json"), "prisme").unwrap();
+        std::fs::write(new.join("sessions.json"), r#"{"":{"theme":"light"}}"#).unwrap();
 
         assert!(take_over_maido(&new));
-        assert_eq!(std::fs::read_to_string(new.join("sessions.json")).unwrap(), "prisme");
+        let merged: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(new.join("sessions.json")).unwrap()).unwrap();
+        assert_eq!(merged, serde_json::json!({"": {"theme": "light", "fontSize": 18}, "/docs": {"tabs": ["a.md"]}}), "maido's fill the gaps, prisme's stay");
         assert_eq!(std::fs::read_to_string(new.join("mermaid/a.svg")).unwrap(), "svg");
         assert!(!take_over_maido(&new), "done once");
         let _ = std::fs::remove_dir_all(&base);
