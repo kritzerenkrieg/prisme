@@ -1,0 +1,141 @@
+name: tectonic
+
+# The Tectonic that ships beside prisme (C4): Tectonic's own release, built from its tag with
+# scripts/tectonic-confine-outputs.patch, which keeps a document's \openout files inside the output
+# folder (Tectonic writes any name it is given, `../` and absolute paths too). A tag push
+# (tectonic-<version>-prisme.<n>) builds it for every platform prisme ships on, checks that a
+# document cannot write outside, and puts the binaries in a pre-release of that name (a
+# pre-release, so the updater's releases/latest never points at it). scripts/fetch-tectonic.sh
+# then downloads them, their SHA-256 pinned.
+#
+# The builds follow Tectonic's own CI: Linux through `cross` and Tectonic's static musl images,
+# macOS and Windows through vcpkg and static triplets, so each binary needs only system libraries.
+on:
+  push:
+    tags: ['tectonic-*']
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl, kind: cross, test: true }
+          - { os: ubuntu-latest, target: aarch64-unknown-linux-musl, kind: cross, test: false }
+          - { os: macos-latest, target: aarch64-apple-darwin, kind: vcpkg, test: true }
+          - { os: macos-latest, target: x86_64-apple-darwin, kind: vcpkg, test: false }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, kind: vcpkg, test: true }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: prisme
+
+      - name: Tectonic's source
+        shell: bash
+        run: |
+          # tectonic-0.17.0-prisme.1 -> 0.17.0
+          version="${TAG#tectonic-}"; version="${version%%-prisme.*}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch "tectonic@$version" --recurse-submodules --shallow-submodules \
+            https://github.com/tectonic-typesetting/tectonic.git tectonic
+          cd tectonic && git apply --verbose ../prisme/scripts/tectonic-confine-outputs.patch
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.kind == 'cross'
+        shell: bash
+        working-directory: tectonic
+        run: |
+          cargo install cross --locked
+          cross build --release --target ${{ matrix.target }}
+
+      - name: vcpkg tools
+        if: matrix.kind == 'vcpkg'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then brew install autoconf-archive automake libtool pkg-config; fi
+          cargo install --git https://github.com/mcgoo/cargo-vcpkg --branch master cargo-vcpkg
+
+      - name: vcpkg cache
+        if: matrix.kind == 'vcpkg'
+        uses: actions/cache@v4
+        with:
+          path: tectonic/target/vcpkg-cache
+          key: vcpkg-${{ matrix.target }}-${{ hashFiles('tectonic/Cargo.toml') }}
+
+      - name: Build (vcpkg)
+        if: matrix.kind == 'vcpkg'
+        shell: bash
+        working-directory: tectonic
+        run: |
+          mkdir -p target/vcpkg-cache
+          export VCPKG_DEFAULT_BINARY_CACHE="$PWD/target/vcpkg-cache"
+          export TECTONIC_DEP_BACKEND=vcpkg VCPKG_ROOT="$PWD/target/vcpkg"
+          if [ "$RUNNER_OS" = Windows ]; then
+            export RUSTFLAGS=-Ctarget-feature=+crt-static VCPKGRS_TRIPLET=x64-windows-static-release \
+              VCPKG_DEFAULT_HOST_TRIPLET=x64-windows-static-release
+          fi
+          cargo vcpkg -v build --target ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: A document cannot write outside its output folder
+        if: matrix.test
+        shell: bash
+        run: |
+          exe=tectonic/target/${{ matrix.target }}/release/tectonic
+          [ "$RUNNER_OS" = Windows ] && exe="$exe.exe"
+          work="$RUNNER_TEMP/confine"; mkdir -p "$work/out"
+          abs="$(cd "$work" && pwd -W 2>/dev/null || pwd)/escaped-abs.txt"
+          cat > "$work/out/evil.tex" <<EOF
+          \documentclass{article}
+          \newwrite\a \immediate\openout\a=../escaped-rel.txt \immediate\write\a{x}\immediate\closeout\a
+          \newwrite\b \immediate\openout\b=$abs \immediate\write\b{x}\immediate\closeout\b
+          \newwrite\c \immediate\openout\c=sub/inside.txt \immediate\write\c{x}\immediate\closeout\c
+          \begin{document}x\end{document}
+          EOF
+          TECTONIC_CACHE_DIR="$work/cache" "$exe" --chatter minimal --outdir "$work/out" "$work/out/evil.tex"
+          ls -R "$work/out"
+          test -f "$work/out/evil.pdf"
+          test -f "$work/out/sub/inside.txt"
+          if find "$work" -name 'escaped-*' | grep .; then echo "a file was written outside the output folder"; exit 1; fi
+
+      - name: Package
+        shell: bash
+        run: |
+          dir=tectonic/target/${{ matrix.target }}/release
+          name="$TAG-${{ matrix.target }}"
+          if [ "$RUNNER_OS" = Windows ]; then
+            (cd "$dir" && 7z a "$GITHUB_WORKSPACE/$name.zip" tectonic.exe)
+          else
+            tar -czf "$name.tar.gz" -C "$dir" tectonic
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.TAG }}-*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Pre-release
+        run: |
+          sha256sum "$TAG"-* | tee SHA256SUMS
+          gh release create "$TAG" "$TAG"-* SHA256SUMS -R "${{ github.repository }}" --prerelease \
+            --title "$TAG" --notes "Tectonic ${TAG#tectonic-} built with prisme's patch keeping \\openout files inside the output folder (scripts/tectonic-confine-outputs.patch), for the TeX that ships beside prisme. Not a prisme release."
