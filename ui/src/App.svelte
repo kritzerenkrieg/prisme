@@ -1548,8 +1548,15 @@
 </div>
 
 {#if ctx}
-  <!-- Zoomed with the interface: its place is in zoomed pixels. -->
-  <div class="menu-list ctx-menu" style:left="{Math.max(0, Math.min(ctx.x, innerWidth - 230 * settings.uiScale)) / settings.uiScale}px" style:top="{Math.max(0, Math.min(ctx.y, innerHeight - 300 * settings.uiScale)) / settings.uiScale}px">
+  <!-- Zoomed with the interface: its place is in zoomed pixels. Kept inside
+       the window; in a short one it scrolls rather than running past the bottom. -->
+  {@const top = Math.max(0, Math.min(ctx.y, innerHeight - 300 * settings.uiScale))}
+  <div
+    class="menu-list ctx-menu"
+    style:left="{Math.max(0, Math.min(ctx.x, innerWidth - 230 * settings.uiScale)) / settings.uiScale}px"
+    style:top="{top / settings.uiScale}px"
+    style:max-height="{(innerHeight - top) / settings.uiScale}px"
+  >
     {@render menuItems(contextMenu(ctx.entry), () => (ctx = null))}
   </div>
 {/if}

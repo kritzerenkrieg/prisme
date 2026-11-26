@@ -201,6 +201,7 @@ button {
 .ctx-menu {
   position: fixed;
   top: auto;
+  overflow-y: auto;
 }
 .menu-list hr {
   border: 0;
