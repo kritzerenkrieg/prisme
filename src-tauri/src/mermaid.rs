@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::oneshot;
 
 pub const LABEL: &str = "mermaid";
-const VERSION: &str = env!("MAIDO_MERMAID_VERSION");
+const VERSION: &str = env!("PRISME_MERMAID_VERSION");
 const IDLE_CLOSE: Duration = Duration::from_secs(3);
 /// A helper that never answers must not leave diagrams waiting for ever.
 const TIMEOUT: Duration = Duration::from_secs(30);

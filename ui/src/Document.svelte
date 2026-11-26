@@ -216,7 +216,7 @@
     }
     const pending = codes.filter(isMermaid).map((c) => replaceFence(c.parentElement!, c.textContent ?? '', forPath))
     if (el.dataset.math) pending.push(renderMath(el))
-    // The button is maido's, added after sanitizing; the document cannot
+    // The button is prisme's, added after sanitizing; the document cannot
     // make one or press it (F5).
     for (const c of codes) {
       const lang = [...c.classList].find((k) => k.startsWith('language-'))?.slice('language-'.length)

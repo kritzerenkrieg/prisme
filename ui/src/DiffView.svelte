@@ -4,7 +4,7 @@
     mode: 'file' | 'text'
     path: string
     text: string
-    /** Shown instead of the picker, for sides maido filled in (your unsaved edits). */
+    /** Shown instead of the picker, for sides prisme filled in (your unsaved edits). */
     label?: string
   }
 </script>

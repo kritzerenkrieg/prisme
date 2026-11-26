@@ -7,6 +7,6 @@ fn main() {
         .ok()
         .and_then(|s| s.split("\"version\"").nth(1).and_then(|r| r.split('"').nth(1)).map(String::from))
         .unwrap_or_else(|| "unknown".into());
-    println!("cargo:rustc-env=MAIDO_MERMAID_VERSION={version}");
+    println!("cargo:rustc-env=PRISME_MERMAID_VERSION={version}");
     tauri_build::build()
 }

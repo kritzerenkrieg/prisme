@@ -1,18 +1,23 @@
-![maido](assets/maido-logo.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/prisme-white.svg">
+  <img src="assets/prisme-black.svg" alt="prisme" width="160">
+</picture>
 
-# maido
+# prisme
 
-A quiet Markdown and Mermaid reader with a terminal beside it. Read your docs, make quick fixes, and run your shell, CLI or agent right next to them.
+An open prism editor: one folder, seen as rendered Markdown, drawn Mermaid diagrams and compiled LaTeX, with an editor and a terminal beside it. Read your docs, make quick fixes, and run your shell, CLI or agent right next to them.
+
+prisme was called maido up to 0.4. Its first start takes over maido's saved tabs, settings and caches.
 
 ---
 
-## Why maido
+## Why prisme
 
-Most of what an agent or a CLI writes ends up as Markdown. maido is for reading that well: open a folder, watch documents update as files change on disk, and keep a terminal one keystroke away. It reads first and edits second, and it stays small.
+Most of what an agent or a CLI writes ends up as Markdown. prisme is for reading that well: open a folder, watch documents update as files change on disk, and keep a terminal one keystroke away. It reads first and edits second, and it stays small.
 
 ## Features
 
-![maido: Explorer with two folders, the editor with its live preview, and a terminal](assets/screenshot-1.png)
+![prisme: Explorer with two folders, the editor with its live preview, and a terminal](assets/screenshot-1.png)
 
 ### Reading
 - **Rendered Markdown** with code highlighting, an outline, tabs and links between documents. Only the blocks that changed are redrawn, so live reload stays smooth, and what changed is flashed so you see what an agent just did.
@@ -40,10 +45,10 @@ Most of what an agent or a CLI writes ends up as Markdown. maido is for reading 
 ## Usage
 
 ```sh
-maido              # open the last folder you had open (or ~)
-maido .            # open the current folder
-maido ~/notes      # open a folder
-maido README.md    # open a file
+prisme              # open the last folder you had open (or ~)
+prisme .            # open the current folder
+prisme ~/notes      # open a folder
+prisme README.md    # open a file
 ```
 
 ### Keys
@@ -66,7 +71,7 @@ Every command and shortcut is in the [guide](GUIDE.md).
 
 ## Install
 
-Prebuilt packages (`.deb` and AppImage) are on the [Releases tab](https://github.com/kritzerenkrieg/maido/releases) of the GitHub repository. Download the latest one from there, or build it yourself below.
+Prebuilt packages (`.deb` and AppImage) are on the [Releases tab](https://github.com/kritzerenkrieg/prisme/releases) of the GitHub repository. Download the latest one from there, or build it yourself below.
 
 ## Build
 
@@ -82,7 +87,7 @@ pnpm release    # also builds the packages
 ## Learn more
 
 - [`GUIDE.md`](GUIDE.md) lists every command and shortcut.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) explains the design, and [`ARCHITECTURE.mmd`](ARCHITECTURE.mmd) draws it. Open it in maido.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) explains the design, and [`ARCHITECTURE.mmd`](ARCHITECTURE.mmd) draws it. Open it in prisme.
 - [`SECURITY.md`](SECURITY.md) is the threat model.
 
 ## License

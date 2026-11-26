@@ -1,6 +1,6 @@
-# maido guide
+# prisme guide
 
-Every command and shortcut. Shortcuts use `Ctrl` (maido is tested on Linux first; macOS and Windows are not tested yet).
+Every command and shortcut. Shortcuts use `Ctrl` (prisme is tested on Linux first; macOS and Windows are not tested yet).
 
 ## Opening things
 
@@ -11,14 +11,14 @@ Every command and shortcut. Shortcuts use `Ctrl` (maido is tested on Linux first
 | `Ctrl+N` | New file in the current folder |
 | `Ctrl+Shift+F` | Search the text of every file in the workspace |
 
-From a shell, `maido .`, `maido ~/notes` and `maido README.md` open a folder or a file; a second call opens a window in the running maido. Plain `maido` (and the app menu) opens the last folder you had open, or your home folder if it is gone.
+From a shell, `prisme .`, `prisme ~/notes` and `prisme README.md` open a folder or a file; a second call opens a window in the running prisme. Plain `prisme` (and the app menu) opens the last folder you had open, or your home folder if it is gone.
 
 ## Documents and tabs
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl+F` | Find in the document (see below); in the editor it is the editor's find and replace |
-| `Ctrl+E` | Switch the tab between reading and editing (source files always open in the editor) |
+| `Ctrl+E` | Switch the tab between reading and editing (source code, plain text and other files prisme cannot render always open in the editor) |
 | `Ctrl+S` | Save (refused if the file changed on disk since you opened it) |
 | `Ctrl+W` | Close the tab (asks first when it has unsaved edits) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
@@ -68,11 +68,11 @@ Each folder of the workspace sits under its own tinted header; click it to fold 
 |---|---|
 | `` Ctrl+` `` | Show, hide or focus the terminal |
 | `` Ctrl+Shift+` `` | New terminal session |
-| `Ctrl`+click on a path | Open it in maido (`file.md:42` scrolls to that line) |
+| `Ctrl`+click on a path | Open it in prisme (`file.md:42` scrolls to that line) |
 | `Ctrl`+click on a URL | Open it in the browser |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy the selection / paste |
 
-Inside a terminal `Ctrl+W` and `Ctrl+Tab` go to the shell, not to maido. A `bash`/`sh` code block in a document has a *Send to terminal* button that pastes without pressing `Enter`.
+Inside a terminal `Ctrl+W` and `Ctrl+Tab` go to the shell, not to prisme. A `bash`/`sh` code block in a document has a *Send to terminal* button that pastes without pressing `Enter`.
 
 ## Menus
 

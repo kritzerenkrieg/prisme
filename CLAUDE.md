@@ -1,4 +1,4 @@
-# maido
+# prisme
 
 A path-based Markdown and Mermaid reader and editor (Tauri 2, Svelte 5 + TypeScript, `comrak`, `syntect`, CodeMirror 6, `portable-pty` + xterm.js) with a terminal beside the docs. Reader first, editor second. No language servers, plugins or WYSIWYG. Git is one simple panel (changes, commit, sync) over the system's `git`; no history, branches or staging UI. No agent detection: an agent is just a program in a terminal. Design: `ARCHITECTURE.md`. Threat model: `SECURITY.md`.
 
@@ -7,7 +7,7 @@ A path-based Markdown and Mermaid reader and editor (Tauri 2, Svelte 5 + TypeScr
 - AI MUST NEVER co-author lines. Human will forever carry the responsibilities of their creation.
 - Commits follow Conventional Commits: `type(scope): subject`, scope optional.
   - Types: `feat` (something you can now do or see), `fix` (something that was wrong), `docs`, `ci`, `chore` (scaffolding, assets, vendoring, releases). No `refactor`, `style` or `test` so far: tests ride with the change they cover.
-  - Scopes name the part of maido a user would recognise: `app`, `doc`, `viewer`, `editor`, `diff`, `terminal`, `find`, `search`, `explorer`, `workspace`, `tabs`, `mermaid`, `latex`, `update`, `git`, `release`. Leave it out when the change spans the whole project (`docs: add README…`).
+  - Scopes name the part of prisme a user would recognise: `app`, `doc`, `viewer`, `editor`, `diff`, `terminal`, `find`, `search`, `explorer`, `workspace`, `tabs`, `mermaid`, `latex`, `update`, `git`, `release`. Leave it out when the change spans the whole project (`docs: add README…`).
   - Subject: lowercase, imperative, no final period, says what changed as the user meets it ("open pictures and PDFs as tabs", "treat a URL wrapped over several rows as one link"), not which function changed. Keys, menus and file names as they appear (`Ctrl+Shift+C`, `File > Open recent`, `.tex`).
   - Body optional: plain prose paragraphs, not bullets, not hard-wrapped, saying how it works or why, in ARCHITECTURE.md's voice. For a fix, say what went wrong and what happens now.
   - A commit may hold several features or fixes; code, its tests and its doc updates (ARCHITECTURE.md, SECURITY.md, GUIDE.md) still go together.
@@ -20,7 +20,7 @@ A path-based Markdown and Mermaid reader and editor (Tauri 2, Svelte 5 + TypeScr
 
 ## Memory budget
 
-Measured against a bare Tauri window in the same sitting: idle with one document at most 60 MB above it, fully loaded at most 90 MB above it, one document at most 25 MB above maido's empty window. Measure PSS (not RSS) summed over maido and all child processes (WebKit web and network processes) from `/proc/<pid>/smaps_rollup`, on a fresh workspace copy, ~10 s after start. Only one maido process runs at a time (single instance), so close any open window first.
+Measured against a bare Tauri window in the same sitting: idle with one document at most 60 MB above it, fully loaded at most 90 MB above it, one document at most 25 MB above prisme's empty window. Measure PSS (not RSS) summed over prisme and all child processes (WebKit web and network processes) from `/proc/<pid>/smaps_rollup`, on a fresh workspace copy, ~10 s after start. Only one prisme process runs at a time (single instance), so close any open window first.
 
 ## Saved state
 

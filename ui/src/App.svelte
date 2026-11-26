@@ -579,7 +579,7 @@
     saveSettings()
     try {
       update = await api.checkUpdate()
-      if (!update && asked) say('maido is up to date.')
+      if (!update && asked) say('prisme is up to date.')
     } catch (e) {
       if (asked) say(`Could not check for updates: ${e}`)
     }
@@ -591,9 +591,9 @@
   })
 
   async function installUpdate() {
-    // maido restarts: edits must be saved first.
+    // prisme restarts: edits must be saved first.
     if (Object.values(dirty).some(Boolean)) {
-      say('Save or discard your edits first: maido restarts to update.')
+      say('Save or discard your edits first: prisme restarts to update.')
       return
     }
     updating = true
@@ -1243,7 +1243,7 @@
               <span>GPU terminals</span>
               <input type="checkbox" bind:checked={settings.terminalGpu} onchange={saveSettings} />
             </label>
-            <h4>Updates{#if appVersion} <span class="set-version">maido {appVersion}</span>{/if}</h4>
+            <h4>Updates{#if appVersion} <span class="set-version">prisme {appVersion}</span>{/if}</h4>
             <label class="set-row" title="Look for a new version once a day">
               <span>Check for updates</span>
               <input type="checkbox" bind:checked={settings.checkUpdates} onchange={saveSettings} />
@@ -1373,7 +1373,7 @@
     {/if}
     {#if update}
       <div class="banner" title={update.notes}>
-        <span>maido {update.version} is available.</span>
+        <span>prisme {update.version} is available.</span>
         {#if update.install}
           <button onclick={installUpdate} disabled={updating}>{updating ? 'Updating…' : 'Update and restart'}</button>
         {:else}
