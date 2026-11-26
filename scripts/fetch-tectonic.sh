@@ -73,7 +73,7 @@ fi
 # new packages download), and from nothing for another Tectonic version.
 SRC="$(cd "$(dirname "$0")" && pwd)/tectonic-seed"
 SEED="$DIR/tectonic-seed"
-WANT="$VERSION $(cat "$SRC"/*.tex "$SRC"/*.sty "$SRC"/*.bib | sha256 /dev/stdin)"
+WANT="$VERSION $(cat "$SRC"/*.tex "$SRC"/*.sty "$SRC"/*.bib "$SRC"/bibstyles.txt | sha256 /dev/stdin)"
 HAVE="$(cat "$SEED.version" 2>/dev/null || true)"
 # The stamp inside it tells an installed prisme whether its copy of the seed is whole and current.
 if [ -d "$SEED/formats" ] && [ "$HAVE" = "$WANT" ]; then
@@ -85,6 +85,12 @@ rm -f "$SEED.version"
 echo "Compiling the seed documents with Tectonic (downloads the TeX packages they use)"
 WORK="$(mktemp -d)"
 cp "$SRC"/*.tex "$SRC"/*.sty "$SRC"/*.bib "$WORK"/
+# One small document per BibTeX style (natbib's numbers mode takes author-year and numeric ones alike).
+grep -v '^#' "$SRC/bibstyles.txt" | while read -r style; do
+  [ -n "$style" ] || continue
+  printf '%s\n' '\documentclass{article}' '\usepackage[numbers]{natbib}' '\begin{document}' 'See \cite{knuth}.' \
+    "\\bibliographystyle{$style}" '\bibliography{seed}' '\end{document}' > "$WORK/bib-$style.tex"
+done
 for doc in "$WORK"/*.tex; do
   echo "  $(basename "$doc")"
   TECTONIC_CACHE_DIR="$SEED" "$OUT" --chatter minimal --outdir "$WORK" "$doc"

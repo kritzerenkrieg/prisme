@@ -1,0 +1,22 @@
+# BibTeX styles that ship with prisme's TeX: scripts/fetch-tectonic.sh compiles a small document
+# citing tectonic-seed/seed.bib with each (one style a line).
+plain
+alpha
+abbrv
+unsrt
+ieeetr
+acm
+siam
+apalike
+plainnat
+abbrvnat
+unsrtnat
+plainurl
+unsrturl
+IEEEtran
+IEEEtranN
+splncs04
+elsarticle-num
+elsarticle-harv
+naturemag
+vancouver
