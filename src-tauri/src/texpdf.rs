@@ -2,8 +2,8 @@
 //! else `pdflatex` (or `xelatex` / `lualatex` when the file asks for it).
 //! Without either it uses the Tectonic that ships beside prisme
 //! (`prisme-tectonic`), built with a patch that keeps a document's files
-//! inside its output folder; a system Tectonic, which has no such limit,
-//! only when that one is missing. Its cache, in prisme's, starts as a
+//! inside its output folder; never a Tectonic of the system, which has no
+//! such limit. Its cache, in prisme's, starts as a
 //! copy of the one that ships with prisme (the common packages and its
 //! format file, so most documents compile offline from the start); a
 //! package beyond those is downloaded when first needed. The source (the file, or the
@@ -271,11 +271,9 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_c
         let mut c = tectonic_command(&tectonic, out, src_dir);
         c.env("TECTONIC_CACHE_DIR", tectonic_cache);
         c
-    } else if let Some(tectonic) = find("tectonic") {
-        // Only a build without the bundled one gets here: this Tectonic
-        // writes `\openout` files wherever a document names them.
-        tectonic_command(&tectonic, out, src_dir)
     } else {
+        // Not a Tectonic of the system, even here: it writes `\openout`
+        // files wherever a document names them.
         return Err(format!(
             "No TeX found to compile with: prisme uses latexmk or {}, else the Tectonic it ships with, which is missing from this build. Install TeX Live (or MiKTeX, MacTeX).",
             program.binary()
@@ -574,7 +572,7 @@ mod tests {
     /// Runs only where TeX is installed.
     #[test]
     fn compiles_with_a_nested_include() {
-        if find("latexmk").is_none() && find("tectonic").is_none() && find("pdflatex").is_none() {
+        if find("latexmk").is_none() && find("pdflatex").is_none() {
             return;
         }
         let dir = std::env::temp_dir().join(format!("prisme-tex-include-{}", std::process::id()));
@@ -603,7 +601,7 @@ mod tests {
     /// found, nothing is written beside it, and an error comes back from the log.
     #[test]
     fn compiles_with_the_system_tex() {
-        if find("latexmk").is_none() && find("tectonic").is_none() && find("pdflatex").is_none() {
+        if find("latexmk").is_none() && find("pdflatex").is_none() {
             return;
         }
         let base = std::env::temp_dir().join(format!("prisme-tex-{}", std::process::id()));
