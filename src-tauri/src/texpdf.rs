@@ -336,7 +336,7 @@ impl Bib {
 fn bibliography(out: &Path, stem: &str, src_dir: &Path) -> Result<Option<(Bib, Command)>, String> {
     let bib = if out.join(format!("{stem}.bcf")).is_file() {
         Bib::Biber
-    } else if aux_has_bibdata(out, &format!("{stem}.aux"), &mut Vec::new()) {
+    } else if aux_has_bibdata(out, &format!("{stem}.aux"), &mut Default::default()) {
         Bib::BibTeX
     } else {
         return Ok(None);
@@ -353,12 +353,12 @@ fn bibliography(out: &Path, stem: &str, src_dir: &Path) -> Result<Option<(Bib, C
 /// The `.aux` `name` in `out`, or one it `\@input`s (what `\include`
 /// writes, so a `\bibliography` in an included file lands there), asks
 /// BibTeX for a bibliography. BibTeX itself follows them from the root.
-fn aux_has_bibdata(out: &Path, name: &str, seen: &mut Vec<String>) -> bool {
+fn aux_has_bibdata(out: &Path, name: &str, seen: &mut std::collections::HashSet<String>) -> bool {
     let inside = Path::new(name).components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir));
-    if !inside || seen.iter().any(|s| s == name) || seen.len() > 200 {
+    // Each file once: that ends cycles, and bounds the walk by the files there are.
+    if !inside || !seen.insert(name.to_string()) {
         return false;
     }
-    seen.push(name.to_string());
     let Ok(aux) = std::fs::read_to_string(out.join(name)) else {
         return false;
     };
@@ -720,11 +720,18 @@ mod tests {
         std::fs::create_dir_all(out.join("ch")).unwrap();
         std::fs::write(out.join("main.aux"), "\\relax\n\\@input{intro.aux}\n\\@input{ch/refs.aux}\n").unwrap();
         std::fs::write(out.join("intro.aux"), "\\relax\n\\@input{main.aux}\n").unwrap();
-        assert!(!aux_has_bibdata(&out, "main.aux", &mut Vec::new()), "no bibliography, and the cycle ends");
+        assert!(!aux_has_bibdata(&out, "main.aux", &mut Default::default()), "no bibliography, and the cycle ends");
         std::fs::write(out.join("ch/refs.aux"), "\\relax\n\\bibstyle{plain}\n\\bibdata{refs}\n").unwrap();
-        assert!(aux_has_bibdata(&out, "main.aux", &mut Vec::new()));
+        assert!(aux_has_bibdata(&out, "main.aux", &mut Default::default()));
+        // However many files come before the one with the bibliography.
+        let many: String = (0..500).map(|i| format!("\\@input{{c{i}.aux}}\n")).collect();
+        for i in 0..500 {
+            std::fs::write(out.join(format!("c{i}.aux")), "\\relax\n").unwrap();
+        }
+        std::fs::write(out.join("long.aux"), many + "\\@input{ch/refs.aux}\n").unwrap();
+        assert!(aux_has_bibdata(&out, "long.aux", &mut Default::default()));
         std::fs::write(out.join("direct.aux"), "\\bibdata{refs}\n").unwrap();
-        assert!(aux_has_bibdata(&out, "direct.aux", &mut Vec::new()));
+        assert!(aux_has_bibdata(&out, "direct.aux", &mut Default::default()));
         let _ = std::fs::remove_dir_all(&out);
     }
 
