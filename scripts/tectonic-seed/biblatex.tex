@@ -1,0 +1,9 @@
+% biblatex through BibTeX: the bundled Tectonic runs BibTeX itself and has no Biber, so this is the
+% backend that works with it.
+\documentclass{article}
+\usepackage[backend=bibtex,style=numeric]{biblatex}
+\addbibresource{seed.bib}
+\begin{document}
+See \cite{knuth}.
+\printbibliography
+\end{document}
