@@ -72,7 +72,9 @@ SRC="$(cd "$(dirname "$0")" && pwd)/tectonic-seed"
 SEED="$DIR/tectonic-seed"
 WANT="$VERSION $(cat "$SRC"/*.tex "$SRC"/*.sty "$SRC"/*.bib | sha256 /dev/stdin)"
 HAVE="$(cat "$SEED.version" 2>/dev/null || true)"
+# The stamp inside it tells an installed prisme whether its copy of the seed is whole and current.
 if [ -d "$SEED/formats" ] && [ "$HAVE" = "$WANT" ]; then
+  echo "$WANT" > "$SEED/prisme-seed"
   exit 0
 fi
 [ "${HAVE%% *}" = "$VERSION" ] || rm -rf "$SEED"
@@ -85,5 +87,6 @@ for doc in "$WORK"/*.tex; do
   TECTONIC_CACHE_DIR="$SEED" "$OUT" --chatter minimal --outdir "$WORK" "$doc"
 done
 rm -rf "$WORK"
+echo "$WANT" > "$SEED/prisme-seed"
 echo "$WANT" > "$SEED.version"
 du -sh "$SEED"

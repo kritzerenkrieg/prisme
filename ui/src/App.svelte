@@ -1549,7 +1549,7 @@
 
 {#if ctx}
   <!-- Zoomed with the interface: its place is in zoomed pixels. -->
-  <div class="menu-list ctx-menu" style:left="{Math.min(ctx.x, innerWidth - 230 * settings.uiScale) / settings.uiScale}px" style:top="{Math.min(ctx.y, innerHeight - 300 * settings.uiScale) / settings.uiScale}px">
+  <div class="menu-list ctx-menu" style:left="{Math.max(0, Math.min(ctx.x, innerWidth - 230 * settings.uiScale)) / settings.uiScale}px" style:top="{Math.max(0, Math.min(ctx.y, innerHeight - 300 * settings.uiScale)) / settings.uiScale}px">
     {@render menuItems(contextMenu(ctx.entry), () => (ctx = null))}
   </div>
 {/if}
