@@ -248,9 +248,18 @@ fn latex_first_run(app: AppHandle) -> Result<bool, String> {
 
 /// A `.tex` file compiled to PDF by the system's TeX, else the bundled Tectonic (C4): the file as saved,
 /// or `text` (the editor's unsaved text). The PDF's bytes, or TeX's errors.
-/// It is compiled in prisme's cache, never in the workspace.
+/// It is compiled in prisme's cache, never in the workspace. `lualatex`: the
+/// workspace allows the system's LuaLaTeX (else such a document returns
+/// `texpdf::ASK_LUALATEX`, and the frontend asks).
 #[tauri::command]
-async fn compile_latex(app: AppHandle, window: WebviewWindow, windows: State<'_, Windows>, path: String, text: Option<String>) -> Result<Response, String> {
+async fn compile_latex(
+    app: AppHandle,
+    window: WebviewWindow,
+    windows: State<'_, Windows>,
+    path: String,
+    text: Option<String>,
+    lualatex: Option<bool>,
+) -> Result<Response, String> {
     let ws = windows.get(&window)?;
     if !matches!(extension(&path).as_str(), "tex" | "latex") {
         return Err(format!("{path} is not a LaTeX file"));
@@ -267,7 +276,7 @@ async fn compile_latex(app: AppHandle, window: WebviewWindow, windows: State<'_,
     let cache = app.path().app_cache_dir().map_err(|e| e.to_string())?;
     let (out, tectonic) = (cache.join("latex").join(key), cache.join("tectonic"));
     let seed = app.path().resource_dir().ok().map(|d| d.join("tectonic-seed"));
-    tauri::async_runtime::spawn_blocking(move || texpdf::compile(&app.state::<Compiler>(), &full, &text, &out, &tectonic, seed.as_deref()))
+    tauri::async_runtime::spawn_blocking(move || texpdf::compile(&app.state::<Compiler>(), &full, &text, &out, &tectonic, seed.as_deref(), lualatex.unwrap_or(false)))
         .await
         .map_err(|e| e.to_string())?
         .map(Response::new)

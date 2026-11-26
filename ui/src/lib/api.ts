@@ -65,7 +65,12 @@ export interface Session {
   /** The terminal panel: beside or below the document, and its share of the space. */
   termPos: 'right' | 'bottom'
   termSize: number
+  /** The system's LuaLaTeX may compile this workspace's documents: their Lua code can write outside the output folder, so it is asked once. */
+  lualatex?: boolean
 }
+
+/** What compiling a document that asks for LuaLaTeX returns until the workspace allows it. */
+export const ASK_LUALATEX = 'prisme:ask-lualatex'
 
 export interface Settings {
   remoteImages: 'ask' | 'always' | 'never'
@@ -163,7 +168,8 @@ export const api = {
   previewDocument: (path: string, text: string, have: string[]) => invoke<DocView>('preview_document', { path, text, have }),
   readPdf: (path: string) => invoke<ArrayBuffer>('read_pdf', { path }),
   /** A `.tex` file compiled by the system's TeX (`text`: unsaved edits instead of the file); rejects with TeX's errors. */
-  compileLatex: (path: string, text: string | null) => invoke<ArrayBuffer>('compile_latex', { path, text }),
+  /** Rejects with ASK_LUALATEX for a document that wants the system's LuaLaTeX while `lualatex` is false. */
+  compileLatex: (path: string, text: string | null, lualatex: boolean) => invoke<ArrayBuffer>('compile_latex', { path, text, lualatex }),
   latexFirstRun: () => invoke<boolean>('latex_first_run'),
   loadSource: (path: string) => invoke<{ text: string; hash: string }>('load_source', { path }),
   /** Rejects with "conflict" when the file changed on disk since `base` (E3). */
