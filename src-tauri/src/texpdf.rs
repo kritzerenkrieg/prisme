@@ -29,6 +29,8 @@ const FIRST_TIMEOUT: Duration = Duration::from_secs(600);
 /// The name the bundled Tectonic is installed under, beside prisme's own
 /// program (not `tectonic`, so it never clashes with a system package).
 const BUNDLED: &str = "prisme-tectonic";
+/// A bare engine runs at most this many times for one compile.
+const MAX_RUNS: usize = 5;
 /// At most this many lines of the log come back with an error.
 const ERROR_LINES: usize = 24;
 /// Of what TeX prints, only this much of the end is kept (for an error with no log).
@@ -237,8 +239,11 @@ fn kill_all(child: &mut std::process::Child) {
 /// The command that compiles `file` (in `out`, its own folder) for a source
 /// in `src_dir`, and how long it may run. `tectonic_cache` is where the
 /// bundled Tectonic keeps its packages.
-fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_cache: &Path) -> Result<(Command, Duration), String> {
+fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_cache: &Path) -> Result<(Command, Duration, bool), String> {
     let mut timeout = TIMEOUT;
+    // A bare engine runs once: the caller does what `latexmk` and Tectonic
+    // do themselves (bibliography, reruns).
+    let mut bare = false;
     let interaction = ["-interaction=nonstopmode", "-halt-on-error", "-file-line-error"];
     let mut cmd = if let Some(latexmk) = find("latexmk") {
         let mut c = program_command(&latexmk);
@@ -254,6 +259,7 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_c
             .arg(format!("-outdir={}", out.display()));
         c
     } else if let Some(tex) = find(program.binary()) {
+        bare = true;
         let mut c = program_command(&tex);
         c.arg("-no-shell-escape").args(interaction).arg(format!("-output-directory={}", out.display()));
         c
@@ -275,8 +281,15 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_c
             program.binary()
         ));
     };
-    cmd.arg(file)
-        .current_dir(out)
+    cmd.arg(file);
+    in_folder(&mut cmd, out, src_dir);
+    Ok((cmd, timeout, bare))
+}
+
+/// Run in `out`, finding the source's files as if beside it, writing only
+/// into `out`, with the output piped.
+fn in_folder(cmd: &mut Command, out: &Path, src_dir: &Path) {
+    cmd.current_dir(out)
         .env("TEXINPUTS", search_path("TEXINPUTS", src_dir))
         .env("BIBINPUTS", search_path("BIBINPUTS", src_dir))
         .env("BSTINPUTS", search_path("BSTINPUTS", src_dir))
@@ -285,7 +298,29 @@ fn command(file: &Path, out: &Path, src_dir: &Path, program: Program, tectonic_c
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    Ok((cmd, timeout))
+}
+
+/// After a bare engine's first run, the bibliography program the document
+/// needs: Biber when biblatex left a `.bcf`, BibTeX when the `.aux` names
+/// `\bibdata`; none when it has no bibliography, or that program is missing.
+fn bibliography(out: &Path, stem: &str, src_dir: &Path) -> Option<Command> {
+    let program = if out.join(format!("{stem}.bcf")).is_file() {
+        find("biber")?
+    } else if std::fs::read_to_string(out.join(format!("{stem}.aux"))).is_ok_and(|aux| aux.contains("\\bibdata")) {
+        find("bibtex")?
+    } else {
+        return None;
+    };
+    let mut c = program_command(&program);
+    c.arg(stem);
+    in_folder(&mut c, out, src_dir);
+    Some(c)
+}
+
+/// Whether LaTeX's log asks for another run: cross-references or citations
+/// changed since this one.
+fn wants_rerun(log: &str) -> bool {
+    log.contains("Rerun to get") || log.contains("Label(s) may have changed") || log.contains("Please rerun LaTeX") || log.contains("Please (re)run")
 }
 
 /// Compile `text` (the source of `src`, a `.tex` file) in `out`; the PDF's bytes,
@@ -319,13 +354,30 @@ pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path, tectonic
             seed_cache(seed, tectonic_cache).map_err(|e| format!("Could not set up the bundled TeX in {}: {e}", tectonic_cache.display()))?;
         }
     }
-    let (mut cmd, mut timeout) = command(&file, out, src_dir, program(text), tectonic_cache)?;
+    let engine = || command(&file, out, src_dir, program(text), tectonic_cache);
+    let (mut cmd, mut timeout, bare) = engine()?;
     let _first = (timeout == FIRST_TIMEOUT).then(|| compiler.first.lock().unwrap());
     // Another first compile may have built the format while this one waited.
     if _first.is_some() && has_format(tectonic_cache) {
-        (cmd, timeout) = command(&file, out, src_dir, program(text), tectonic_cache)?;
+        (cmd, timeout, _) = engine()?;
     }
-    let (status, output) = run(cmd, timeout)?;
+    let deadline = Instant::now() + timeout;
+    let (mut status, mut output) = run(cmd, deadline, timeout)?;
+    // A bare engine: the bibliography, then runs until the references settle.
+    if bare && status.success() {
+        let mut runs = 1;
+        let mut again = false;
+        if let Some(bib) = bibliography(out, &stem, src_dir) {
+            // A bibliography that fails leaves its citations unresolved, as `latexmk` would show them.
+            let _ = run(bib, deadline, timeout)?;
+            again = true;
+        }
+        while status.success() && runs < MAX_RUNS && (again || std::fs::read_to_string(&log).is_ok_and(|l| wants_rerun(&l))) {
+            (status, output) = run(engine()?.0, deadline, timeout)?;
+            runs += 1;
+            again = false;
+        }
+    }
     if status.success()
         && let Ok(bytes) = std::fs::read(&pdf)
     {
@@ -343,8 +395,8 @@ pub fn compile(compiler: &Compiler, src: &Path, text: &str, out: &Path, tectonic
 }
 
 /// Run `cmd` (its output piped) to the end, or stop it and everything it
-/// started after `timeout`; its exit status and the end of what it printed.
-fn run(mut cmd: Command, timeout: Duration) -> Result<(std::process::ExitStatus, String), String> {
+/// started at `deadline`, the end of a compile allowed `limit` in all.
+fn run(mut cmd: Command, deadline: Instant, limit: Duration) -> Result<(std::process::ExitStatus, String), String> {
     // Its own process group, so a timeout stops the engine `latexmk` started too.
     #[cfg(unix)]
     {
@@ -375,13 +427,12 @@ fn run(mut cmd: Command, timeout: Duration) -> Result<(std::process::ExitStatus,
     };
     let stdout = pipe(child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>));
     let stderr = pipe(child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>));
-    let start = Instant::now();
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if start.elapsed() > timeout => {
+            Ok(None) if Instant::now() > deadline => {
                 kill_all(&mut child);
-                return Err(format!("TeX ran for more than {} s and was stopped.", timeout.as_secs()));
+                return Err(format!("TeX ran for more than {} s and was stopped.", limit.as_secs()));
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(40)),
             Err(e) => return Err(e.to_string()),
@@ -446,7 +497,7 @@ mod tests {
         let mut cmd = Command::new("sh");
         cmd.arg("-c").arg("sleep 60 & echo $! > \"$1\"; wait").arg("sh").arg(&pid_file).stdout(Stdio::piped()).stderr(Stdio::piped());
         let started = Instant::now();
-        let err = run(cmd, Duration::from_millis(500)).unwrap_err();
+        let err = run(cmd, Instant::now() + Duration::from_millis(500), Duration::from_millis(500)).unwrap_err();
         assert!(err.contains("was stopped"), "{err}");
         assert!(started.elapsed() < Duration::from_secs(10));
         let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
@@ -545,6 +596,53 @@ mod tests {
         assert!(!seeded(&cache, &seed));
         seed_cache(&seed, &cache).unwrap();
         assert!(seeded(&cache, &seed) && cache.join("bundles/data/b.sty").is_file());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn reruns_and_bibliographies_from_the_first_run() {
+        assert!(wants_rerun("LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right."));
+        assert!(wants_rerun("Package rerunfilecheck Warning: File `a.out' has changed.\n(rerunfilecheck) Rerun to get outlines right"));
+        assert!(wants_rerun("Package biblatex Warning: Please (re)run Biber on the file:"));
+        assert!(!wants_rerun("Output written on a.pdf (1 page)."));
+
+        let out = std::env::temp_dir().join(format!("prisme-tex-bib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&out);
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join("a.aux"), "\\relax\n").unwrap();
+        assert!(bibliography(&out, "a", &out).is_none(), "no bibliography asked for");
+        std::fs::write(out.join("a.aux"), "\\relax\n\\bibstyle{plain}\n\\bibdata{refs}\n").unwrap();
+        if let Some(bibtex) = find("bibtex") {
+            let c = bibliography(&out, "a", &out).expect("BibTeX for \\bibdata");
+            assert_eq!(c.get_program(), bibtex.as_os_str());
+            assert_eq!(c.get_args().collect::<Vec<_>>(), ["a"]);
+        }
+        std::fs::write(out.join("a.bcf"), "<bcf/>").unwrap();
+        if let Some(biber) = find("biber") {
+            assert_eq!(bibliography(&out, "a", &out).unwrap().get_program(), biber.as_os_str());
+        }
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// A bare engine resolves citations and references like `latexmk` does.
+    /// Ignored by default: it needs `pdflatex` and `bibtex` and no `latexmk`
+    /// (run it with a PATH and HOME that hide one: see ARCHITECTURE.md).
+    #[test]
+    #[ignore]
+    fn bare_engine_runs_bibtex_and_reruns() {
+        assert!(find("latexmk").is_none() && find("pdflatex").is_some() && find("bibtex").is_some());
+        let base = std::env::temp_dir().join(format!("prisme-tex-bare-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (docs, out) = (base.join("docs"), base.join("out"));
+        std::fs::create_dir_all(&docs).unwrap();
+        std::fs::write(docs.join("refs.bib"), "@book{knuth, author = {Donald Knuth}, title = {The TeXbook}, year = {1984}}\n").unwrap();
+        let text = "\\documentclass{article}\n\\begin{document}\nSee \\cite{knuth} and \\ref{s}.\n\\section{One}\\label{s}\n\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}\n";
+        let src = docs.join("main.tex");
+        std::fs::write(&src, text).unwrap();
+        compile(&Compiler::default(), &src, text, &out, &base.join("tectonic"), None).unwrap();
+        let log = std::fs::read_to_string(out.join("main.log")).unwrap();
+        assert!(out.join("main.bbl").is_file(), "BibTeX ran");
+        assert!(!log.contains("undefined"), "citations and references resolved:\n{log}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
