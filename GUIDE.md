@@ -23,7 +23,8 @@ From a shell, `prisme .`, `prisme ~/notes` and `prisme README.md` open a folder 
 | `Ctrl+W` | Close the tab (asks first when it has unsaved edits) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+P` | Print, or print to a PDF file (documents, diagram files and PDFs) |
-| `Ctrl+=` `Ctrl+-` `Ctrl+0` | Text size: bigger, smaller, normal |
+| `Ctrl+=` `Ctrl+-` `Ctrl+0` | Text size: bigger, smaller, normal (in a terminal, the terminal's text) |
+| Touchpad pinch | Text size of the document or editor under the fingers; over a terminal, its text; over a PDF or diagram, its zoom |
 | Middle click on a tab | Close it |
 | Mouse wheel over the tabs | Scroll the tab row |
 
@@ -78,7 +79,7 @@ Inside a terminal `Ctrl+W` and `Ctrl+Tab` go to the shell, not to prisme. A `bas
 
 **File:** New file, New folder, Open file, Open folder, Add folder to workspace, Open recent (a side menu of the last folders; each shows its two parent folders and `…/` when more lie above), Save, Save all, Print, Close tab, Close window.
 **Edit:** Undo, Redo, Cut, Copy, Paste, Find in document, Search in workspace, Edit/Read this file. Edit acts on whatever had the focus: the editor, a text field, a terminal (paste) or the selected text of the page.
-**Settings:** theme, font, text size, page margins, remote images, terminal scrollback and renderer, update checks (with the version you run).
+**Settings:** theme, interface size (menus, tabs, sidebar and other controls, 50–200%), font, text size, page margins, remote images, terminal text size, scrollback and renderer, update checks (with the version you run).
 
 ## Command palette
 
@@ -109,6 +110,7 @@ Inside a terminal `Ctrl+W` and `Ctrl+Tab` go to the shell, not to prisme. A `bas
 | Check for updates | |
 | Theme: system, light, dark | |
 | Font size: bigger, smaller, normal | `Ctrl+=` `Ctrl+-` `Ctrl+0` |
+| Terminal font size: bigger, smaller, normal | `Ctrl+=` `Ctrl+-` `Ctrl+0` in a terminal |
 | Font: sans, serif | |
 | Outline, Explorer | |
 
@@ -120,11 +122,11 @@ In the palette `↑` `↓` choose, `Enter` opens, `Escape` closes.
 |---|---|
 | `.md`, `.markdown` | Rendered; editable |
 | `.mmd`, `.mermaid` | One diagram with zoom (wheel or touchpad pinch) and pan; editable |
-| `.tex`, `.latex` | Rendered as a document with KaTeX math, or compiled to PDF (see below); editable |
+| `.tex`, `.latex` | Compiled to PDF with your own TeX (see below); editable beside the PDF |
 | Source code (Rust, Python, C, JavaScript, JSON, shell and about thirty more; `</>` in the Explorer) | Opens in the editor, coloured |
 | PNG, JPEG, WebP, GIF, BMP, AVIF, ICO, SVG | Shown as a picture |
 | PDF (up to 50 MB) | Drawn page by page; text can be selected and copied (see below) |
-| Any other text file | Plain text, editable |
+| Any other file | Opens in the editor; a binary file is only named |
 
 ### PDF
 
@@ -145,6 +147,4 @@ Diagram files (`.mmd`, `.mermaid`) print as the whole diagram fitted to the shee
 
 ### LaTeX
 
-A `.tex` file is read as a document, not compiled: sections, emphasis, lists, quotes, `verbatim` and `lstlisting` code, simple `tabular`s, `\includegraphics` pictures, `\href`/`\url` links, `\cite`/`\ref` (shown as `[key]`) and all math (`$…$`, `\(…\)`, `$$…$$`, `\[…\]`, `equation`, `align`, `gather`, …) are shown. Macros you define, packages, page layout and bibliographies are not run; an unknown command loses its name and keeps its text. Line positions can shift by a few lines in lists and tables, so scroll sync is approximate.
-
-**PDF mode.** The *Markdown / PDF* switch in the top bar (for `.tex` files) compiles the file with your own TeX instead: `latexmk` if you have it, else Tectonic, else `pdflatex` (`xelatex` or `lualatex` when the file has `% !TEX program = xelatex` near the top, or loads `fontspec`). maido ships no TeX; install TeX Live, MacTeX or MiKTeX, TinyTeX (a small TeX Live, about 200 MB: `curl -sL https://yihui.org/tinytex/install-bin-unix.sh | sh`, then `tlmgr install <package>` for what a document is missing), or Tectonic. It compiles again whenever the file is saved or a file beside it changes (another `.tex`, a `.bib`, a picture), and while you edit, once you stop typing. When TeX stops with an error, its messages show above the last PDF that compiled. Compiling happens in maido's cache folder, so nothing (`.aux`, `.log`, the PDF) is written beside your file; files beside it are found as usual for `\input`, `\include`, `\includegraphics` and bibliographies. The switch is remembered per file.
+A `.tex` file is compiled with your own TeX and shown as the PDF: `latexmk` if you have it, else Tectonic, else `pdflatex` (`xelatex` or `lualatex` when the file has `% !TEX program = xelatex` near the top, or loads `fontspec`). Without any of those, prisme uses the TeX it comes with (Tectonic, with common packages: the standard classes, beamer and KOMA-Script, AMS math, TikZ and pgfplots, tables, listings, hyperref, BibTeX styles, fontspec and more), so there is nothing to install and it works offline. A package it does not have is downloaded the first time a document loads it, which needs the internet once. They are kept in prisme's cache folder (`~/.cache/dev.prisme.editor/tectonic/`). Your own TeX (TeX Live, MacTeX or MiKTeX, TinyTeX, or Tectonic) is still used first when you have one. It compiles again whenever the file is saved or a file beside it changes (another `.tex`, a `.bib`, a picture), and while you edit, once you stop typing. When TeX stops with an error, its messages show above the last PDF that compiled. Compiling happens in prisme's cache folder, so nothing (`.aux`, `.log`, the PDF) is written beside your file; files beside it are found as usual for `\input`, `\include`, `\includegraphics` and bibliographies. When no TeX can run, the tab says so and the file can still be edited.

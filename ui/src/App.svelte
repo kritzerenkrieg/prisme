@@ -20,7 +20,7 @@
   import type SearchT from './Search.svelte'
   import TexPdf from './TexPdf.svelte'
   import Tree from './Tree.svelte'
-  import { api, isCode, isDoc, isLatex, type Entry, type FsChange, type OutlineItem, type Pinch, type RootInfo, type Session, type Settings, type UpdateInfo, type WorkspaceInfo } from './lib/api'
+  import { api, editorOnly, isDoc, isLatex, type Entry, type FsChange, type OutlineItem, type Pinch, type RootInfo, type Session, type Settings, type UpdateInfo, type WorkspaceInfo } from './lib/api'
   import type { Buffer } from './lib/buffers'
     import type { LinkTarget } from './lib/terminal'
   import { applyTheme } from './lib/theme'
@@ -28,12 +28,14 @@
   import type TerminalsPanel from './Terminals.svelte'
 
   let info = $state<WorkspaceInfo | null>(null)
-  let session = $state<Session>({ tabs: [], active: null, scroll: {}, follow: false, all: false, termPos: 'bottom', termSize: 0.35, texPdf: {} })
+  let session = $state<Session>({ tabs: [], active: null, scroll: {}, follow: false, all: false, termPos: 'bottom', termSize: 0.35 })
   let settings = $state<Settings>({
     remoteImages: 'ask',
     scrollback: 2000,
     // The DOM renderer: 23 MB less per window than WebGL (K1).
     terminalGpu: false,
+    terminalFontSize: 13,
+    uiScale: 1,
     theme: 'system',
     docScale: 1,
     docFont: 'sans',
@@ -80,7 +82,7 @@
   let preview = $state<Record<string, string>>({})
   /** Files whose disk copy changed under unsaved edits, or whose save was refused (E3). */
   let conflict = $state<Record<string, boolean>>({})
-  /** Source files (`isCode`) open in the editor only; these could not be loaded into it, so they are shown read-only. */
+  /** Files with no reading view (`editorOnly`) open in the editor; these could not be loaded into it (binary ones), so they are shown read-only. */
   let codeFailed = $state<Record<string, boolean>>({})
   const starting = new Set<string>()
   /** Asking before unsaved edits are lost: closing one tab, or the window. */
@@ -109,18 +111,11 @@
 
   // ---- LaTeX as PDF (C4) ----
 
-  /** A `.tex` file shown as its compiled PDF. */
-  const asPdf = (path: string | null) => !!path && isLatex(path) && !!session.texPdf?.[path]
+  /** A `.tex` file is shown as its compiled PDF. */
+  const asPdf = (path: string | null) => !!path && isLatex(path)
   /** Changes beside a `.tex` file in PDF mode that it may include (other `.tex`, bibliographies, pictures). */
   let texDeps = $state<Record<string, number>>({})
   let texView = $state<ReturnType<typeof TexPdf>>()
-
-  function toggleTexPdf() {
-    const f = activeFile
-    if (!f || !isLatex(f)) return
-    session.texPdf = { ...session.texPdf, [f]: !session.texPdf?.[f] }
-    if (session.texPdf[f]) outline = []
-  }
 
   // A PDF has no outline here.
   $effect(() => {
@@ -212,6 +207,7 @@
   $effect(() => {
     const css = document.documentElement.style
     css.setProperty('--doc-scale', String(settings.docScale))
+    css.setProperty('--ui-scale', String(settings.uiScale))
     css.setProperty('--doc-font', FONTS[settings.docFont] ?? FONTS.sans)
     for (const side of SIDES) css.setProperty(`--doc-m-${side}`, `${settings.docMargin[side]}px`)
     applyTheme(settings.theme)
@@ -246,6 +242,44 @@
   function zoom(step: number) {
     // 70% to 200%, in steps of 10%.
     setSetting('docScale', step === 0 ? 1 : Math.min(2, Math.max(0.7, Math.round((settings.docScale + step * 0.1) * 10) / 10)))
+  }
+
+  let saveSoonTimer: ReturnType<typeof setTimeout> | undefined
+  /** Saved once a pinch settles, not on each of its steps. */
+  function saveSoon() {
+    clearTimeout(saveSoonTimer)
+    saveSoonTimer = setTimeout(saveSettings, 400)
+  }
+
+  /** A pinch over the document or the editor: any size from 70% to 200%. */
+  function pinchDoc(scale: number) {
+    settings.docScale = Math.min(2, Math.max(0.7, Math.round(scale * 100) / 100))
+    saveSoon()
+  }
+
+  const TERM_FONT = { min: 7, max: 32, normal: 13 }
+  /** Terminal text: a step of 1 px (Ctrl+= / Ctrl+- / Ctrl+0 in a terminal), or a size from a pinch. */
+  function zoomTerminal(step: number | null, size?: number) {
+    const px = step === 0 ? TERM_FONT.normal : step === null ? Math.round(size ?? TERM_FONT.normal) : settings.terminalFontSize + step
+    const next = Math.min(TERM_FONT.max, Math.max(TERM_FONT.min, px))
+    if (next === settings.terminalFontSize) return
+    settings.terminalFontSize = next
+    saveSoon()
+  }
+
+  function setTermFont(e: Event) {
+    const el = e.currentTarget as HTMLInputElement
+    const v = Math.min(TERM_FONT.max, Math.max(TERM_FONT.min, Math.round(parseFloat(el.value) || settings.terminalFontSize)))
+    el.value = String(v)
+    setSetting('terminalFontSize', v)
+  }
+
+  /** Interface size is typed as a percentage, 50 to 200. */
+  function setUiPercent(e: Event) {
+    const el = e.currentTarget as HTMLInputElement
+    const v = Math.min(200, Math.max(50, Math.round(parseFloat(el.value) || settings.uiScale * 100)))
+    el.value = String(v)
+    setSetting('uiScale', v / 100)
   }
 
   // ---- Finding (E1, L6) ----
@@ -328,7 +362,7 @@
       { title: 'New folder…', run: () => void newItem(here(), true) },
       !!f && { title: 'Find in document', key: 'Ctrl+F', run: findInDocument },
       { title: 'Search in workspace', key: 'Ctrl+Shift+F', run: () => void showSearch() },
-      !!f && !isCode(f) && { title: f && editing[f] ? 'Read this file' : 'Edit this file', key: 'Ctrl+E', run: toggleEdit },
+      !!f && !editorOnly(f) && { title: f && editing[f] ? 'Read this file' : 'Edit this file', key: 'Ctrl+E', run: toggleEdit },
       !!f && buffers.has(f) && { title: 'Save', key: 'Ctrl+S', run: () => void save(f!) },
       anyDirty && { title: 'Save all', run: () => void saveAll() },
       !!active && { title: 'Close tab', key: 'Ctrl+W', run: () => active && close(active) },
@@ -347,6 +381,9 @@
       { title: 'Font size: bigger', key: 'Ctrl+=', run: () => zoom(1) },
       { title: 'Font size: smaller', key: 'Ctrl+-', run: () => zoom(-1) },
       { title: 'Font size: normal', key: 'Ctrl+0', run: () => zoom(0) },
+      { title: 'Terminal font size: bigger', run: () => zoomTerminal(1) },
+      { title: 'Terminal font size: smaller', run: () => zoomTerminal(-1) },
+      { title: 'Terminal font size: normal', run: () => zoomTerminal(0) },
       { title: 'Font: sans', run: () => setSetting('docFont', 'sans') },
       { title: 'Font: serif', run: () => setSetting('docFont', 'serif') },
       { title: 'Outline', run: () => (sidebar = 'outline') },
@@ -371,8 +408,9 @@
           codeLangs.set(path, await lib.codeLanguage(path).catch(() => null))
           src = await api.loadSource(path)
         } catch (e) {
-          if (isCode(path)) codeFailed[path] = true
-          say(`Cannot edit: ${e}`)
+          if (editorOnly(path)) codeFailed[path] = true
+          // A binary file shows as one, without a word.
+          if (!(editorOnly(path) && String(e).includes('binary'))) say(`Cannot edit: ${e}`)
           return
         }
         // Closed while loading.
@@ -386,10 +424,10 @@
     editing[path] = true
   }
 
-  // Source files have no reading view of their own: they open in the editor.
+  // Source, plain text and unknown files have no reading view of their own: they open in the editor.
   $effect(() => {
     const f = activeFile
-    if (f && isCode(f) && !editing[f] && !codeFailed[f]) void startEdit(f)
+    if (f && editorOnly(f) && !editing[f] && !codeFailed[f]) void startEdit(f)
   })
 
   function newState(path: string, text: string) {
@@ -410,7 +448,7 @@
   function toggleEdit() {
     if (!activeFile) return
     if (/\.(png|jpe?g|webp|gif|bmp|avif|ico|pdf)$/i.test(activeFile)) return say('Pictures and PDFs open for reading only.')
-    if (isCode(activeFile) && !codeFailed[activeFile]) return say('Source files open in the editor only.')
+    if (editorOnly(activeFile) && !codeFailed[activeFile]) return say('This file opens in the editor only.')
     if (editing[activeFile]) editing[activeFile] = false
     else void startEdit(activeFile)
   }
@@ -807,7 +845,7 @@
       { label: 'Find in document', key: 'Ctrl+F', off: !f, run: findInDocument },
       { label: 'Search in workspace', key: 'Ctrl+Shift+F', run: () => void showSearch() },
       'sep',
-      { label: f && editing[f] ? 'Read this file' : 'Edit this file', key: 'Ctrl+E', off: !f || isCode(f), run: toggleEdit },
+      { label: f && editing[f] ? 'Read this file' : 'Edit this file', key: 'Ctrl+E', off: !f || editorOnly(f), run: toggleEdit },
     ]
   }
 
@@ -982,10 +1020,10 @@
     node.setSelectionRange(0, dot > 0 ? dot : node.value.length)
   }
 
-  /** A touchpad pinch zooms the PDF or diagram it began over; elsewhere it does nothing. */
+  /** A touchpad pinch zooms what it began over: a PDF or diagram, the document, the editor, or a terminal's text; elsewhere it does nothing. */
   let pinchTarget: Element | null = null
   function routePinch(p: Pinch) {
-    if (p.phase === 'begin') pinchTarget = document.elementFromPoint(p.x, p.y)?.closest('.pdf-scroll, .mmd-page') ?? null
+    if (p.phase === 'begin') pinchTarget = document.elementFromPoint(p.x, p.y)?.closest('.pdf-scroll, .mmd-page, .doc-scroll, .editor, .terms-body') ?? null
     pinchTarget?.dispatchEvent(new CustomEvent('pinch', { detail: p }))
     if (p.phase === 'end') pinchTarget = null
   }
@@ -1076,6 +1114,8 @@
       roots = info.roots
       const saved = await api.loadSession().catch(() => null)
       if (saved) session = { ...session, ...saved, scroll: saved.scroll ?? {} }
+      // Saved by maido 0.4, when a `.tex` file could also be read as Markdown.
+      delete (session as Session & { texPdf?: unknown }).texPdf
       const s = await api.loadSettings().catch(() => null)
       if (s) settings = { ...settings, ...s }
       settings.recentFolders = [info.root, ...(settings.recentFolders ?? []).filter((f) => f !== info!.root)].slice(0, 10)
@@ -1203,6 +1243,10 @@
                 <option value="dark">Dark</option>
               </select>
             </label>
+            <label class="set-row" title="Menus, tabs, the sidebar and other controls, in percent; documents, the editor and terminals have sizes of their own">
+              <span>Interface size</span>
+              <span class="unit"><input type="number" min="50" max="200" step="10" value={Math.round(settings.uiScale * 100)} onchange={setUiPercent} />%</span>
+            </label>
             <label class="set-row">
               <span>Remote images</span>
               <select bind:value={settings.remoteImages} onchange={saveSettings}>
@@ -1219,7 +1263,7 @@
                 <option value="serif">Serif</option>
               </select>
             </label>
-            <label class="set-row" title="Percent (Ctrl+= / Ctrl+- / Ctrl+0)">
+            <label class="set-row" title="Percent (Ctrl+= / Ctrl+- / Ctrl+0, or pinch)">
               <span>Font size</span>
               <span class="unit"><input type="number" min="70" max="200" step="0.1" value={Math.round(settings.docScale * 1000) / 10} onchange={setFontPercent} />%</span>
             </label>
@@ -1238,6 +1282,10 @@
             <label class="set-row" title="Lines each terminal keeps">
               <span>Terminal backlog</span>
               <span class="unit"><input type="number" min="100" max="100000" step="500" bind:value={settings.scrollback} onchange={saveSettings} />lines</span>
+            </label>
+            <label class="set-row" title="Pixels (Ctrl+= / Ctrl+- / Ctrl+0 in a terminal, or pinch)">
+              <span>Terminal font size</span>
+              <span class="unit"><input type="number" min={TERM_FONT.min} max={TERM_FONT.max} step="1" value={settings.terminalFontSize} onchange={setTermFont} />px</span>
             </label>
             <label class="set-row" title="Recommended for heavy output or rendering, such as build logs or an agent streaming a lot of text: terminals are drawn with WebGL, which is faster. It uses about 23 MB more memory per terminal and applies to terminals opened after you change it.">
               <span>GPU terminals</span>
@@ -1268,14 +1316,7 @@
       <button class="tabs-btn" onclick={diffButton} title={activeFile && dirty[activeFile] ? 'Compare the saved file with your unsaved edits' : activeFile ? 'Compare this file with another file or text' : 'Compare two files or texts'}>Diff</button>
       <button class="tabs-btn" class:on={sidebar === 'git'} onclick={() => (sidebar === 'git' ? (sidebar = 'files') : void showGit())} title="Changes, commit and sync">Git</button>
       <button class="tabs-btn" onclick={() => (termOpen ? (termOpen = false) : void showTerminal())} title="Terminal (Ctrl+`)">Terminal</button>
-      {#if activeFile && isLatex(activeFile)}
-        <span class="tools-sep" aria-hidden="true">|</span>
-        <button class="mode-switch" role="switch" aria-checked={asPdf(activeFile)} onclick={toggleTexPdf} title="Read as Markdown, or compile to PDF with your TeX (recompiled on every change)">
-          <span class:on={!asPdf(activeFile)}>Markdown</span>
-          <span class:on={asPdf(activeFile)}>PDF</span>
-        </button>
-      {/if}
-      {#if activeFile && !(isCode(activeFile) && !codeFailed[activeFile])}
+      {#if activeFile && !editorOnly(activeFile)}
         <span class="tools-sep" aria-hidden="true">|</span>
         <button class="mode-switch" role="switch" aria-checked={!!editing[activeFile]} onclick={toggleEdit} title="Viewer or editor (Ctrl+E)">
           <span class:on={!editing[activeFile]}>Viewer</span>
@@ -1399,6 +1440,8 @@
                 <Ed
                   bind:this={editor}
                   buffer={buffers.get(activeFile)!}
+                  scale={settings.docScale}
+                  onzoom={pinchDoc}
                   onscrollline={(l) => {
                     if (!activeFile) return
                     session.scroll[activeFile] = l
@@ -1423,6 +1466,8 @@
                   line={session.scroll[activeFile] ?? 1}
                   anchor={null}
                   source={preview[activeFile] ?? null}
+                  scale={settings.docScale}
+                  onzoom={pinchDoc}
                   onloaded={(d) => {
                     outline = d.outline
                     remoteImages = d.remoteImages
@@ -1436,8 +1481,8 @@
               </div>
             {/if}
           </div>
-        {:else if activeFile && isCode(activeFile) && !codeFailed[activeFile]}
-          <!-- A source file on its way into the editor. -->
+        {:else if activeFile && editorOnly(activeFile) && !codeFailed[activeFile]}
+          <!-- An editor-only file on its way into the editor. -->
         {:else if activeFile && asPdf(activeFile)}
           {#key activeFile}
             <TexPdf bind:this={texView} path={activeFile} version={(versions[activeFile] ?? 0) + (texDeps[activeFile] ?? 0)} text={dirty[activeFile] ? (preview[activeFile] ?? null) : null} />
@@ -1454,6 +1499,8 @@
                 line={session.scroll[activeFile] ?? 1}
                 {anchor}
                 source={dirty[activeFile] ? (preview[activeFile] ?? null) : null}
+                scale={settings.docScale}
+                onzoom={pinchDoc}
                 onloaded={(d) => {
                   outline = d.outline
                   remoteImages = d.remoteImages
@@ -1485,6 +1532,8 @@
             bind:this={terms}
             scrollback={settings.scrollback}
             gpu={settings.terminalGpu}
+            fontSize={settings.terminalFontSize}
+            onzoom={zoomTerminal}
             position={session.termPos}
             onpath={(t: LinkTarget) => open(t.path, null, t.line)}
             onurl={(u: string) => void api.openExternal(u)}
@@ -1499,7 +1548,8 @@
 </div>
 
 {#if ctx}
-  <div class="menu-list ctx-menu" style:left="{Math.min(ctx.x, innerWidth - 230)}px" style:top="{Math.min(ctx.y, innerHeight - 300)}px">
+  <!-- Zoomed with the interface: its place is in zoomed pixels. -->
+  <div class="menu-list ctx-menu" style:left="{Math.min(ctx.x, innerWidth - 230 * settings.uiScale) / settings.uiScale}px" style:top="{Math.min(ctx.y, innerHeight - 300 * settings.uiScale) / settings.uiScale}px">
     {@render menuItems(contextMenu(ctx.entry), () => (ctx = null))}
   </div>
 {/if}

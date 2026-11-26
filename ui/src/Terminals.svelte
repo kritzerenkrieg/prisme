@@ -3,12 +3,16 @@
   // workspace folder. Hidden sessions keep running; closing the window ends
   // them. Loaded with the first terminal.
   import { onDestroy } from 'svelte'
+  import { onPinch } from './lib/api'
   import { Session, type LinkTarget } from './lib/terminal'
   import { onThemeChange } from './lib/theme'
 
   interface Props {
     scrollback: number
     gpu: boolean
+    /** Text size in px, and a request for another: a step (0 is normal), or a size from a pinch. */
+    fontSize: number
+    onzoom: (step: number | null, size?: number) => void
     position: 'right' | 'bottom'
     onpath: (target: LinkTarget) => void
     onurl: (url: string) => void
@@ -16,7 +20,7 @@
     onhide: () => void
     onempty: () => void
   }
-  let { scrollback, gpu, position, onpath, onurl, onposition, onhide, onempty }: Props = $props()
+  let { scrollback, gpu, fontSize, onzoom, position, onpath, onurl, onposition, onhide, onempty }: Props = $props()
 
   interface Tab {
     n: number
@@ -34,6 +38,8 @@
     const session = new Session({
       scrollback,
       gpu,
+      fontSize,
+      onzoom: (step) => onzoom(step),
       onpath,
       onurl,
       ontitle: (title) => {
@@ -84,6 +90,17 @@
   $effect(() => {
     const lines = scrollback
     for (const t of tabs) t.session.setScrollback(lines)
+  })
+
+  // Every terminal takes the text size; hidden ones fit when they are shown.
+  $effect(() => {
+    const px = fontSize
+    for (const t of tabs) t.session.setFontSize(px)
+  })
+
+  // A touchpad pinch (sent here by App.svelte) sizes the text.
+  $effect(() => {
+    if (body) return onPinch(body, () => fontSize, (next) => onzoom(null, next))
   })
 
   // Refit on any size change: the splitter, the window, switching tabs.

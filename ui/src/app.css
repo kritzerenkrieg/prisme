@@ -24,6 +24,8 @@
   --doc-m-right: 64px;
   --doc-m-bottom: 24px;
   --doc-m-left: 64px;
+  /* Interface size (Settings), set from the app. */
+  --ui-scale: 1;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 15px;
   color: var(--fg);
@@ -104,9 +106,27 @@ button {
 
 .app {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: calc(260px * var(--ui-scale)) 1fr;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
+}
+
+/* Interface size: the controls around documents, the editor and terminals
+   grow and shrink together; what is read or typed keeps its own size. */
+.topbar,
+.sidebar,
+.banner,
+.terms-head,
+.ctx-menu,
+.palette,
+.find-anchor,
+.diff-side-head,
+.diff-bar,
+.tex-error-head,
+.pdf-tools,
+.mmd-zoom,
+.code-lang {
+  zoom: var(--ui-scale);
 }
 
 /* The top bar (N1, N2): menus above the sidebar, tabs, then the tools. */
@@ -537,7 +557,7 @@ button {
   top: 60px;
   left: 50%;
   transform: translateX(-50%);
-  width: min(640px, calc(100vw - 32px));
+  width: min(640px, calc((100vw - 32px) / var(--ui-scale)));
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -720,6 +740,9 @@ button {
 .doc-note {
   color: var(--muted);
   padding: 2em;
+}
+.doc-note + .doc-note {
+  padding-top: 0;
 }
 .doc-error {
   margin: 12px 24px 0;

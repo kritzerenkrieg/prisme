@@ -21,6 +21,8 @@
   },
   "bundle": {
     "active": true,
+    "externalBin": ["binaries/prisme-tectonic"],
+    "resources": { "binaries/tectonic-seed/": "tectonic-seed/" },
     "targets": ["deb", "appimage"],
     "category": "Utility",
     "shortDescription": "An open prism editor: docs, diagrams, LaTeX and a terminal in one window",

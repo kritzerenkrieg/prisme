@@ -65,8 +65,6 @@ export interface Session {
   /** The terminal panel: beside or below the document, and its share of the space. */
   termPos: 'right' | 'bottom'
   termSize: number
-  /** `.tex` files shown as their compiled PDF rather than read as Markdown. */
-  texPdf: Record<string, boolean>
 }
 
 export interface Settings {
@@ -75,6 +73,10 @@ export interface Settings {
   scrollback: number
   /** Terminals drawn with WebGL (else the DOM renderer). */
   terminalGpu: boolean
+  /** Terminal text size in px. */
+  terminalFontSize: number
+  /** Menus, tabs, the sidebar and other controls as a factor, 0.5 to 2. */
+  uiScale: number
   /** Colours (L4). */
   theme: 'system' | 'light' | 'dark'
   /** Reading settings (L5): text size as a factor, font, page margins in px. */
@@ -162,6 +164,7 @@ export const api = {
   readPdf: (path: string) => invoke<ArrayBuffer>('read_pdf', { path }),
   /** A `.tex` file compiled by the system's TeX (`text`: unsaved edits instead of the file); rejects with TeX's errors. */
   compileLatex: (path: string, text: string | null) => invoke<ArrayBuffer>('compile_latex', { path, text }),
+  latexFirstRun: () => invoke<boolean>('latex_first_run'),
   loadSource: (path: string) => invoke<{ text: string; hash: string }>('load_source', { path }),
   /** Rejects with "conflict" when the file changed on disk since `base` (E3). */
   saveFile: (path: string, text: string, base: string, force = false) => invoke<string>('save_file', { path, text, base, force }),
@@ -246,4 +249,14 @@ const CODE_EXTENSIONS = new Set(
 
 export function isCode(path: string): boolean {
   return CODE_EXTENSIONS.has(path.split('.').pop()?.toLowerCase() ?? '') || /(^|\/)(GNU)?[Mm]akefile$/.test(path)
+}
+
+/** Pictures and PDFs: they have a view of their own (an SVG can be edited too). */
+export function isPicture(path: string): boolean {
+  return /\.(png|jpe?g|webp|gif|bmp|avif|ico|svg|pdf)$/i.test(path)
+}
+
+/** Files with no reading view of their own (source, plain text, anything unknown): they open in the editor. */
+export function editorOnly(path: string): boolean {
+  return !isDoc(path) && !isPicture(path)
 }
